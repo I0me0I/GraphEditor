@@ -6,10 +6,10 @@
 
 画顶点、连边、上色命名，然后导出成 SVG。绿色单文件，免安装，不需要 .NET SDK。
 
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#-系统要求)
-[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#-系统要求)
-[![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#-从源码构建)
-[![Tests](https://img.shields.io/badge/tests-501%20checks-brightgreen)](#-测试)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
+[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
+[![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
+[![Tests](https://img.shields.io/badge/tests-501%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -18,17 +18,19 @@
 
 ## 目录
 
-- [这是什么](#-这是什么)
-- [功能](#-功能)
-- [快速开始](#-快速开始)
-- [操作方式](#-操作方式)
-- [从源码构建](#-从源码构建)
-- [测试](#-测试)
-- [项目结构](#-项目结构)
-- [`.graph` 文件格式](#-graph-文件格式)
-- [常见问题](#-常见问题)
-- [关于数字签名](#-关于数字签名)
-- [许可证](#-许可证)
+- [这是什么](#about)
+- [功能](#features)
+- [快速开始](#quickstart)
+- [操作方式](#controls)
+- [从源码构建](#build)
+- [测试](#tests)
+- [项目结构](#layout)
+- [`.graph` 文件格式](#fileformat)
+- [常见问题](#faq)
+- [关于数字签名](#signing)
+- [许可证](#license)
+
+<a id="about"></a>
 
 ## 这是什么
 
@@ -42,6 +44,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - 导出 **SVG** 只保留内容的最小外接矩形，直接能贴进论文或课件。
 
 整个程序约 **4,800 行 C#**，零第三方依赖，用 Windows 自带的 `csc.exe` 就能编译出单个 exe。
+
+<a id="features"></a>
 
 ## 功能
 
@@ -101,12 +105,14 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 
 内置容错：悬空边（引用了不存在的顶点）会被丢弃，非法颜色会被忽略，缺失字段用默认值补齐。
 
+<a id="quickstart"></a>
+
 ## 快速开始
 
 ### 下载即用
 
 1. 到 [Releases](https://github.com/I0me0I/GraphEditor/releases) 下载 `GraphEditor.exe`；
-2. 双击运行（首次会有 SmartScreen 提示，见[关于数字签名](#-关于数字签名)）；
+2. 双击运行（首次会有 SmartScreen 提示，见[关于数字签名](#signing)）；
 3. 无需安装，无需 .NET SDK。
 
 > 想让 `.graph` 文件双击默认用它打开：运行 `tools\register-filetype.ps1`（只写当前用户注册表，不需要管理员权限）。
@@ -123,6 +129,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 <div align="center">
 <img src="docs/images/empty.png" alt="空画布：无限平面，原点居中" width="620">
 </div>
+
+<a id="controls"></a>
 
 ## 操作方式
 
@@ -172,6 +180,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - **属性** —— 顶点属性（颜色 / 大小 / 形状 / 默认命名 / 名字位置）、边属性（颜色 / 线宽 / 线型 / 默认命名 / 名字位置）、画布
 - **帮助** —— 使用说明、关于
 
+<a id="build"></a>
+
 ## 从源码构建
 
 ### 系统要求
@@ -204,6 +214,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 </details>
 
+<a id="tests"></a>
+
 ## 测试
 
 项目自带一个**不依赖任何测试框架**的自检程序，共 **501 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
@@ -227,6 +239,8 @@ RESULT passed=501 failed=0
 ```
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。
+
+<a id="layout"></a>
 
 ## 项目结构
 
@@ -255,6 +269,8 @@ GraphEditor/
 ├─ demand.md                   最初的完整需求说明
 └─ LICENSE                     MIT
 ```
+
+<a id="fileformat"></a>
 
 ## `.graph` 文件格式
 
@@ -291,6 +307,8 @@ GraphEditor/
 - 坐标是**图像坐标**：原点 `(0,0)`，`x` 向右、`y` 向下，可以为负。
 - 加载时容错：悬空边丢弃、非法颜色忽略、缺失字段用默认值补齐。
 
+<a id="faq"></a>
+
 ## 常见问题
 
 <details>
@@ -298,7 +316,7 @@ GraphEditor/
 
 点弹窗里的 **「更多信息」** → 右下角出现 **「仍要运行」** → 点它即可，Windows 会记住这个选择。
 
-原因见[关于数字签名](#-关于数字签名)。
+原因见[关于数字签名](#signing)。
 
 </details>
 
@@ -364,6 +382,8 @@ Get-FileHash .\GraphEditor.exe -Algorithm SHA256
 
 </details>
 
+<a id="signing"></a>
+
 ## 关于数字签名
 
 **先说结论：这个程序没有数字签名，所以 Windows SmartScreen 会拦一下。** 这是预期行为，不是程序有问题 —— 首次运行点「更多信息」→「仍要运行」即可。
@@ -413,6 +433,8 @@ signtool verify /pa /v build\GraphEditor.exe
 ```
 
 若用云签名服务（Azure Trusted Signing / DigiCert KeyLocker），把 `sign` 换成对应的 `dlib` / `ks` 参数即可，CA 文档里都有现成命令。
+
+<a id="license"></a>
 
 ## 许可证
 
