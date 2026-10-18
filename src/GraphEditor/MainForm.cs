@@ -214,7 +214,7 @@ namespace GraphEditor
             _windowMenu.DropDownItems.Clear();
 
             ToolStripMenuItem sideBySide = new ToolStripMenuItem("左右分栏(&V)");
-            sideBySide.Enabled = _area.DocumentCount > 1;
+            sideBySide.Enabled = _area.CanSplitActivePane;
             sideBySide.Click += delegate
             {
                 DocumentView doc = ActiveDocument;
@@ -223,7 +223,7 @@ namespace GraphEditor
             _windowMenu.DropDownItems.Add(sideBySide);
 
             ToolStripMenuItem stacked = new ToolStripMenuItem("上下分栏(&H)");
-            stacked.Enabled = _area.DocumentCount > 1;
+            stacked.Enabled = _area.CanSplitActivePane;
             stacked.Click += delegate
             {
                 DocumentView doc = ActiveDocument;

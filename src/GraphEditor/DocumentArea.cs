@@ -341,54 +341,49 @@ namespace GraphEditor
         /// 那个面板被拆成两半（左/右或上/下）。
         /// </summary>
         /// <summary>
-        /// 把文档放到指定贴靠位置：文档落在光标所在一侧，
-        /// 目标面板被拆成两半（左/右或上/下）。
+        /// 把文档放到指定贴靠位置：拆开**目标面板**（默认是活动面板），
+        /// 文档落在光标所在一侧。
+        ///
+        /// 拆分规则与用户的模型一致：
+        ///   根（整个工作区）可以拆成左右或上下 2 份；
+        ///   每份可以整个使用，也可以再拆成 2 份；
+        ///   已经拆过两次的部分不再拆分 —— 也就是最多 2 层、4 个面板。
         /// </summary>
         public void ApplyDrop(DocumentView doc, DropPlacement place)
         {
-            if (doc == null || place == DropPlacement.None) return;
+            ApplyDropOn(doc, ActivePane, place);
+        }
+
+        /// <summary>把文档放到 target 面板的指定一侧。</summary>
+        private void ApplyDropOn(DocumentView doc, Pane target, DropPlacement place)
+        {
+            if (doc == null || target == null || place == DropPlacement.None) return;
 
             TabPage page = doc.Tag as TabPage;
             if (page == null) return;
             TabControl source = page.Parent as TabControl;
             if (source == null) return;
-
             Pane sourcePane = PaneOf(source);
-            if (sourcePane == null) return;
+
+            // 目标面板里只剩被拖的这一份文档时，拆开没有意义（等于原地不动）
+            if (source == target.Tabs && target.Tabs.TabPages.Count <= 1) return;
+            if (!CanSplitPane(target)) return;
 
             Orientation orientation = (place == DropPlacement.Left || place == DropPlacement.Right)
                 ? Orientation.Vertical
                 : Orientation.Horizontal;
             bool newFirst = (place == DropPlacement.Left || place == DropPlacement.Top);
 
-            // 超过上限：不再拆分（文档留在原面板）
-            if (documentCountOfPane(source) > 1 && PaneCount >= MaxPanes)
-            {
-                return;
-            }
-
-            // 先记下源面板在树里的位置，再把它从父容器上摘下来
-            Control oldParent = sourcePane.Host.Parent;
-            int oldIndex = oldParent != null ? oldParent.Controls.GetChildIndex(sourcePane.Host) : -1;
-            bool wasRoot = ReferenceEquals(sourcePane.Host, _root);
+            // 先记下目标面板在树里的位置，再把它摘下来
+            Control oldParent = target.Host.Parent;
+            int oldIndex = oldParent != null ? oldParent.Controls.GetChildIndex(target.Host) : -1;
+            bool wasRoot = ReferenceEquals(target.Host, _root);
 
             Pane created = CreatePane(false);
             MovePage(page, doc, created.Tabs);
             created.Tabs.SelectedTab = page;
 
-            if (source.TabPages.Count == 0)
-            {
-                // 源面板被搬空了：新面板顶替它的位置，不产生无意义的分割
-                if (oldParent != null) oldParent.Controls.Remove(sourcePane.Host);
-                AttachNode(created.Host, oldParent, oldIndex, wasRoot);
-                RemovePaneBookkeeping(sourcePane);
-                sourcePane.Host.Dispose();
-                _active = created;
-                RelayoutPanes();
-                RaiseDocumentsChanged();
-                RaiseActiveChanged();
-                return;
-            }
+            if (oldParent != null) oldParent.Controls.Remove(target.Host);
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
@@ -396,10 +391,8 @@ namespace GraphEditor
             split.Panel1.Padding = new Padding(0);
             split.Panel2.Padding = new Padding(0);
 
-            if (oldParent != null) oldParent.Controls.Remove(sourcePane.Host);
-
-            Control first = newFirst ? created.Host : sourcePane.Host;
-            Control second = newFirst ? sourcePane.Host : created.Host;
+            Control first = newFirst ? created.Host : target.Host;
+            Control second = newFirst ? target.Host : created.Host;
             first.Dock = DockStyle.Fill;
             second.Dock = DockStyle.Fill;
             split.Panel1.Controls.Add(first);
@@ -408,12 +401,80 @@ namespace GraphEditor
             AttachNode(split, oldParent, oldIndex, wasRoot);
             _active = created;
 
+            // 源面板被搬空了（从别处拖过来的最后一份）→ 收掉它
+            if (sourcePane != null && sourcePane != target && source.TabPages.Count == 0)
+            {
+                RemovePane(sourcePane);
+            }
+
             RelayoutPanes();
             ApplySplitterDistance(split);
             RaiseDocumentsChanged();
             RaiseActiveChanged();
         }
 
+        /// <summary>面板在树里的深度：根面板 0，根拆分出的两半 1，再下一层 2。</summary>
+        private int DepthOf(Pane pane)
+        {
+            int depth = 0;
+            Control node = pane.Host;
+            while (node != null)
+            {
+                SplitterPanel panel = node.Parent as SplitterPanel;
+                if (panel == null) break;
+                SplitContainer split = panel.Parent as SplitContainer;
+                if (split == null) break;
+                depth++;
+                node = split;
+            }
+            return depth;
+        }
+
+        /// <summary>
+        /// 这个面板还能不能再拆：深度小于 2（根 0 → 两半 1 → 再拆 2）
+        /// 且总数没超过上限。
+
+        /// <summary>该面板是否可拆（还要考虑被拖的文档在哪儿）。</summary>
+        private bool CanSplitTargetOf(Pane target)
+        {
+            if (target == null) return false;
+            if (PaneCount >= MaxPanes) return false;
+            if (DepthOf(target) >= 2) return false;
+            // 目标面板只有一份文档，且它就是要被拖走的那份 → 拆不了
+            if (_dragDocument != null)
+            {
+                TabPage dragPage = _dragDocument.Tag as TabPage;
+                if (dragPage != null && dragPage.Parent == target.Tabs && target.Tabs.TabPages.Count <= 1) return false;
+            }
+            return true;
+        }
+
+        /// <summary>活动面板现在是否还能再拆（供菜单判断可用性）。</summary>
+        public bool CanSplitActivePane
+        {
+            get
+            {
+                Pane pane = ActivePane;
+                if (pane == null) return false;
+                if (PaneCount >= MaxPanes) return false;
+                return DepthOf(pane) < 2;
+            }
+        }
+
+        /// </summary>
+        private bool CanSplitPane(Pane pane)
+        {
+            if (pane == null) return false;
+            if (PaneCount >= MaxPanes) return false;
+            return DepthOf(pane) < 2;
+        }
+
+
+        /// <summary>文档所在面板里的文档数。</summary>
+        private int documentCountOfPane(TabControl tabs)
+        {
+            return tabs.TabPages.Count;
+        }
 
         /// <summary>
         /// 把文档移动到另一个文档所在的面板（拖到面板中间时的行为）。
@@ -448,12 +509,6 @@ namespace GraphEditor
             RaiseDocumentsChanged();
             RaiseActiveChanged();
             return true;
-        }
-
-        /// <summary>文档所在面板里的文档数。</summary>
-        private int documentCountOfPane(TabControl tabs)
-        {
-            return tabs.TabPages.Count;
         }
 
         /// <summary>
@@ -724,7 +779,15 @@ namespace GraphEditor
             tabs.Cursor = Cursors.Default;
             HideDropHint();
 
-            if (doc == null || !dragged) return;              // 拖到面板中间（不在边缘）：把标签移到那个面板里             Pane dropTarget = TargetPaneOf(client);             if (place == DropPlacement.None)             {                 if (dropTarget != null) MoveIntoPane(dropTarget, doc);                 return;             }
+            if (doc == null || !dragged) return;
+
+            // 拖到面板中间（不在边缘）：把标签移到那个面板里
+            Pane dropTarget = TargetPaneOf(client);
+            if (place == DropPlacement.None)
+            {
+                if (dropTarget != null) MoveIntoPane(dropTarget, doc);
+                return;
+            }
             if (!CanSplitCurrent()) return;
 
             // 拖到哪个面板就往哪个面板里拆
@@ -756,9 +819,9 @@ namespace GraphEditor
         /// <summary>当前是否可以再拆一个面板。</summary>
         private bool CanSplitCurrent()
         {
-            return DocumentCount > 1 && PaneCount < MaxPanes;
+            Pane target = TargetPaneOf(PointToClient(Cursor.Position));
+            return CanSplitTargetOf(target);
         }
-
         /// <summary>
         /// 鼠标所在的贴靠区（相对该面板的左/右/上/下）；不在边缘返回 None。
         /// 必须区分左右与上下，否则预览永远画在同一侧。

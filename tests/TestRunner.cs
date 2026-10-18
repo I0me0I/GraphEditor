@@ -1826,41 +1826,44 @@ namespace GraphEditor.Tests
                 Control back = form.ActiveDocumentView.Parent.Parent;
                 CheckEqual(form.DocumentArea.Width, back.Parent.Width, "收掉后仍然铺满工作区");
 
-                // 两级拆分：面板可以再拆，最多平铺 4 个
+                // 两级拆分：整个工作区先拆 2 份，每份可以再拆 2 份 → 最多 4 个面板
                 // （每拆一次要把一份文档移进新面板，所以先补足文档）
                 System.Reflection.MethodInfo newDoc = typeof(MainForm).GetMethod("CreateDocument",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                 while (form.DocumentArea.DocumentCount < 6) newDoc.Invoke(form, null);
-                DocumentView splitDoc = form.DocumentArea.AllDocuments[0];
-                form.DocumentArea.Activate(splitDoc);
-                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Right);
-                CheckEqual(2, form.DocumentArea.PaneCount, "第一次拆分 → 2 个面板");
-                splitDoc = form.DocumentArea.AllDocuments[0];
-                form.DocumentArea.Activate(splitDoc);
-                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Bottom);
-                CheckEqual(3, form.DocumentArea.PaneCount, "第二个面板再拆一次 → 3 个面板");
-                splitDoc = form.DocumentArea.AllDocuments[0];
-                form.DocumentArea.Activate(splitDoc);
-                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Left);
-                CheckEqual(4, form.DocumentArea.PaneCount, "再拆一次 → 4 个面板");
-                // 上限：已有 4 个面板时不再拆
-                splitDoc = form.DocumentArea.AllDocuments[0];
-                form.DocumentArea.Activate(splitDoc);
-                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Bottom);
-                CheckEqual(4, form.DocumentArea.PaneCount, "4 个面板时不再继续拆分（上限）");
-                // 拆开后每个文档都还在，且都能激活
-                CheckEqual(6, form.DocumentArea.DocumentCount, "拆分不丢文档");
-                int all = form.DocumentArea.AllDocuments.Count;
-                foreach (DocumentView each in form.DocumentArea.AllDocuments)
+                DocumentArea da = form.DocumentArea;
+                // 第 1 层：整个工作区拆成左右
+                DocumentView a1 = da.AllDocuments[0];
+                da.Activate(a1);
+                da.ApplyDrop(a1, DropPlacement.Right);
+                CheckEqual(2, da.PaneCount, "第 1 层：左右拆成 2 个面板");
+                // 第 2 层：左半边再拆成上下
+                DocumentView a2 = da.AllDocuments[0];
+                da.Activate(a2);
+                da.ApplyDrop(a2, DropPlacement.Bottom);
+                CheckEqual(3, da.PaneCount, "第 2 层：左半边再拆 1 份 → 3 个面板");
+                // 右半边补一份文档后再拆（它原本只有 1 份）
+                List<DocumentView> docs = da.AllDocuments;
+                DocumentView inRight = docs[docs.Count - 1];
+                Check(da.MoveDocumentToPane(docs[0], inRight), "把一份文档移到右半边");
+                da.Activate(inRight);
+                da.ApplyDrop(inRight, DropPlacement.Bottom);
+                CheckEqual(4, da.PaneCount, "右半边也拆开 → 4 个面板（上限）");
+                // 已经到第 2 层的面板不能再拆
+                DocumentView deep = da.AllDocuments[0];
+                da.Activate(deep);
+                da.ApplyDrop(deep, DropPlacement.Bottom);
+                CheckEqual(4, da.PaneCount, "第 2 层面板不能再拆（保持 4 个）");
+                CheckEqual(6, da.DocumentCount, "拆分不丢文档");
+                foreach (DocumentView each in da.AllDocuments)
                 {
-                    form.DocumentArea.Activate(each);
-                    Check(form.DocumentArea.ActiveDocument == each, "可以激活 " + each.DocumentName);
+                    da.Activate(each);
+                    Check(da.ActiveDocument == each, "可以激活 " + each.DocumentName);
                 }
-                CheckEqual(6, all, "遍历文档数量正确");
-                form.DocumentArea.MergeToSinglePane();
-                CheckEqual(1, form.DocumentArea.PaneCount, "合并回单面板");
-                Check(!form.DocumentArea.IsSplit, "合并后不再是拆分状态");
-                CheckEqual(6, form.DocumentArea.DocumentCount, "合并后文档数不变");
+                da.MergeToSinglePane();
+                CheckEqual(1, da.PaneCount, "合并回单面板");
+                Check(!da.IsSplit, "合并后不再是拆分状态");
+                CheckEqual(6, da.DocumentCount, "合并后文档数不变");
             }
         }
 
