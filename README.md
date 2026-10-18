@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.1.3-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-640%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.2.0-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-632%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -153,8 +153,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - **高 DPI 感知（PerMonitorV2）**：在 125% / 150% / 200% 缩放下按真实像素渲染，文字清晰不发虚；
   多个不同缩放的显示器之间拖动窗口也会自动重新布局。程序内嵌了 manifest 并声明了
   `PerMonitorV2`，同时 `GraphEditor.exe.config` 里开启了 WinForms 的对应开关。
-- **Windows 11 窗口外观**：圆角窗口 + 柔和边框，跟随系统的浅色/深色标题栏设置（界面本身是浅色，
-  所以标题栏固定浅色，避免「深色标题栏 + 浅色内容」的割裂感）。在 Windows 10 及更早系统上
+- **系统默认窗口样式**：不自绘标题栏、不改 DWM 属性，圆角/边框/标题栏颜色全部交给 Windows；
+  换成系统深色主题或不同 Windows 版本时，外观自动跟随（和 7-Zip 这类经典程序一致）。
   这些调用会静默跳过，不影响运行。
 ## 多文档
 
@@ -162,12 +162,12 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 
 - `文件 → 新建` / `打开` 会新开一个标签页，而不是替换当前图。
 - 每个文档有**自己的工作区、文件路径与修改状态**，互不影响（包括样式设置与图类型）。
-- 每个文档面板使用经典的**凹陷 3D 边框**（含标签页），看起来像嵌在工作区里。
-- 标签条自绘：深灰蓝底 + 未选中中间灰 + 选中纯白并带蓝色强调线，层次分明（原生 TabControl 做不到）。
+- 每个面板都是**原生 `TabControl`**，边框、标签、滚动条全部由系统绘制。
+- 界面元素一律使用 WinForms 默认外观：不设置自定义颜色、不使用自绘控件、不改系统主题。
 - 所有菜单（编辑、视图、属性）只作用于**当前活动标签页**。
 - **拖动标签页到窗口边缘**即可分栏：拖到左/右边 → 左右并排，拖到上/下边 → 上下分栏。
-- 拖动时光标变成**箭头 + 文档图标**（表示正在搬动一个文档），到达可贴靠位置时**高亮预览**即将占用的那一半区域
-  （左/右/上/下各自对应正确的一半）；不能放置时显示带红色斜杠的禁止光标，按 `Esc` 可取消。
+- 拖动时使用**系统默认光标**，到达可贴靠位置时用系统的**可逆虚线框**（和资源管理器拖动一样）
+  框出即将占用的那一半区域（左/右/上/下各自对应正确的一半）；不能放置时显示系统禁止光标，按 `Esc` 可取消。
 - 把文档拖回原来的半边会**自动收拢**回单栏，不会留下空白的半块区域。
 - `窗口` 菜单提供左右分栏 / 上下分栏 / 合并为单栏，以及文档切换与关闭（`Ctrl+W`）。
 - 关闭文档或退出程序时，若有未保存修改会逐个询问。
@@ -260,7 +260,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **640 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **632 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -274,10 +274,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 640    失败: 0
+通过: 632    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=640 failed=0
+RESULT passed=632 failed=0
 ```
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。
@@ -384,21 +384,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 </details>
 
 <details>
-<summary><b>标签栏和边框为什么是自绘的？</b></summary>
+<summary><b>界面的外观是怎么定的？</b></summary>
 
-因为 WinForms 自带的边框能力很有限：
+**完全使用 WinForms / Windows 默认外观，没有任何自绘。**
 
-| 层级 | 可用样式 |
-| --- | --- |
-| `Form.FormBorderStyle` | `None` / `FixedSingle` / `Fixed3D` / `FixedDialog` / `Sizable` / `FixedToolWindow` / `SizableToolWindow`（3D 只有一种） |
-| 控件 `BorderStyle` | `None` / `FixedSingle` / `Fixed3D`（就三种） |
-| `ControlPaint.DrawBorder3D` | `Raised` / `RaisedInner` / `RaisedOuter` / `Sunken` / `SunkenInner` / `SunkenOuter` / `Etched` / `Bump` / `Flat` / `Adjust` |
+- 窗口、标题栏、圆角、边框：交给 Windows（不调用 DWM，不设自定义颜色）
+- 菜单栏、状态栏、右键菜单、对话框：`MenuStrip` / `StatusStrip` / `ContextMenuStrip` / `MessageBox` 原样使用
+- 标签页与面板：原生 `TabControl`
+- 滚动条：原生 `VScrollBar` / `HScrollBar`
+- 拖动反馈：系统光标 + `ControlPaint.DrawReversibleFrame`（可逆虚线框，和资源管理器一致）
+- 字体：`SystemFonts.MessageBoxFont`，随系统语言与 DPI 自动匹配
 
-关键问题：**`TabControl` 根本没有 `BorderStyle` 属性，标签条底色也无法设置**。
-默认的浅灰标签和浅灰空白几乎同色，对比度极低。
+以 [7-Zip](https://www.7-zip.org/) 为参考：只用系统控件，不追求自定义视觉。
 
-所以本项目用 `ControlPaint.DrawBorder3D(..., Border3DStyle.Sunken)` 画凹陷边框，
-并自绘 `DocumentTabControl`：深灰蓝底 + 未选中中间灰 + 选中纯白 + 顶部蓝色强调线。
+> 早期版本曾经自绘标签条和 3D 边框，会出现「Win11 圆角窗口 + Win95 3D 边框 + 自绘扁平标签」三种风格打架的问题，
+> 现已全部移除。**代价**是标签与空白处的对比度只能由系统主题决定，无法像自绘时那样精确控制。
 
 </details>
 

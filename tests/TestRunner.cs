@@ -1799,15 +1799,13 @@ namespace GraphEditor.Tests
 
                 // 关键回归：单栏时面板必须铺满工作区（不经过 SplitContainer）
                 Control singleTabs = form.ActiveDocumentView.Parent.Parent;
-                Control singleFrame = singleTabs.Parent;
-                Check(singleFrame != null && singleFrame.Parent == form.DocumentArea,
-                    "单栏时面板直接挂在文档区域上（不会有铺不满的空隙）");
-                // 3D 边框每边 3px，允许少量差值，但不允许出现「一半」的空隙
-                Check(singleTabs.Width >= form.DocumentArea.Width - 12,
-                    "单栏时标签宽度铺满工作区（" + singleTabs.Width + " / "
+                Check(singleTabs.Parent == form.DocumentArea,
+                    "单栏时标签控件直接挂在文档区域上（不会有铺不满的空隙）");
+                CheckEqual(form.DocumentArea.Width, singleTabs.Width,
+                    "单栏时标签宽度等于工作区宽度（" + singleTabs.Width + " / "
                     + form.DocumentArea.Width + "）");
-                Check(singleTabs.Height >= form.DocumentArea.Height - 12,
-                    "单栏时标签高度铺满工作区");
+                CheckEqual(form.DocumentArea.Height, singleTabs.Height,
+                    "单栏时标签高度等于工作区高度");
 
                 // 反复切换也要保持铺满
                 form.DocumentArea.SplitWith(form.ActiveDocumentView, Orientation.Horizontal);
@@ -1815,7 +1813,7 @@ namespace GraphEditor.Tests
                 form.DocumentArea.MergeToSinglePane();
                 Check(!form.DocumentArea.IsSplit, "可以再次合并");
                 Control again = form.ActiveDocumentView.Parent.Parent;
-                Check(again.Width >= form.DocumentArea.Width - 12, "反复切换后依然铺满宽度");
+                CheckEqual(form.DocumentArea.Width, again.Width, "反复切换后依然铺满宽度");
 
                 // 拖到右半边再拖回来：不能留下空的右半栏
                 DocumentView dragged = form.ActiveDocumentView;
@@ -1824,7 +1822,7 @@ namespace GraphEditor.Tests
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Left);
                 Check(!form.DocumentArea.IsSplit, "再拖回左边 → 收拢回单栏（不留空白）");
                 Control back = dragged.Parent.Parent;
-                Check(back.Width >= form.DocumentArea.Width - 12, "拖回后仍然铺满工作区");
+                CheckEqual(form.DocumentArea.Width, back.Width, "拖回后仍然铺满工作区");
             }
         }
 
@@ -1870,25 +1868,6 @@ namespace GraphEditor.Tests
                 CheckEqual(0, rectTop.Y, "上方预览从 y=0 开始");
                 Check(rectBottom.Y > 0, "下方预览从中间开始（y=" + rectBottom.Y + "）");
                 Check(rectTop.Bottom <= rectBottom.Y + 1, "上下预览不重叠");
-
-                // 拖动光标：箭头 + 文档图标，必须能正常创建
-                Check(DragCursors.Document != null, "拖动光标创建成功");
-                Check(DragCursors.Document.Size.Width > 0, "拖动光标有有效尺寸");
-                Check(DragCursors.DocumentForbidden != null, "禁止放置光标创建成功");
-
-                // 标签条对比度：选中标签 / 未选中标签 / 标签条空白处必须明显区分
-                double stripLum = DocumentTabControl.Luminance(DocumentTabControl.StripBackground);
-                double normalLum = DocumentTabControl.Luminance(DocumentTabControl.TabBackground(false));
-                double selectedLum = DocumentTabControl.Luminance(DocumentTabControl.TabBackground(true));
-                Check(selectedLum - stripLum >= 0.15,
-                    "选中标签与标签条空白处对比足够（亮度差 " + (selectedLum - stripLum).ToString("0.00") + "）");
-                Check(normalLum - stripLum >= 0.05,
-                    "未选中标签与标签条空白处也能区分（亮度差 " + (normalLum - stripLum).ToString("0.00") + "）");
-                Check(selectedLum > normalLum, "选中的标签比未选中的更亮");
-                Check(DocumentTabControl.StripBackground != DocumentTabControl.TabBackground(true),
-                    "标签条底色与选中标签不是同一个颜色");
-
-                Check(!area.IsDraggingTab, "初始不在拖动状态");
                 area.CancelDrag();   // 没有拖动时调用也必须安全
                 Check(!area.IsDraggingTab, "取消后仍不在拖动状态");
 

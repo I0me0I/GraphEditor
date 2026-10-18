@@ -1966,7 +1966,7 @@ namespace GraphEditor
             // ---- 边名字（无背景，沿边方向倾斜，位置在中点法线上） ----
             if (_zoom > 0.45)
             {
-                using (Font font = new Font("Microsoft YaHei UI", (float)(EdgeFontSize * inv)))
+                using (Font font = new Font(SystemFonts.MessageBoxFont.FontFamily, (float)(EdgeFontSize * inv)))
                 using (StringFormat format = new StringFormat())
                 using (SolidBrush textBrush = new SolidBrush(EdgeLabelTextColor()))
                 {
@@ -2022,7 +2022,7 @@ namespace GraphEditor
             // ---- 顶点名字（位置由「属性」设置决定） ----
             if (_zoom > 0.35)
             {
-                using (Font font = new Font("Microsoft YaHei UI", (float)(VertexFontSize * inv)))
+                using (Font font = new Font(SystemFonts.MessageBoxFont.FontFamily, (float)(VertexFontSize * inv)))
                 using (StringFormat format = new StringFormat())
                 using (SolidBrush textBrush = new SolidBrush(Color.Black))
                 {
@@ -2309,7 +2309,7 @@ namespace GraphEditor
             string text = target != null
                 ? "松开右键：连接到 " + target.Name
                 : "拖到目标顶点后松开右键";
-            using (Font font = new Font("Microsoft YaHei UI", 9f))
+            using (Font font = new Font(SystemFonts.MessageBoxFont.FontFamily, 9f))
             {
                 SizeF size = g.MeasureString(text, font);
                 float bx = _connectPointerDevice.X + 14;
