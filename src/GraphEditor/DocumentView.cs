@@ -12,6 +12,7 @@ namespace GraphEditor
     public sealed class DocumentView : UserControl
     {
         private readonly CanvasControl _canvas = new CanvasControl();
+        private readonly Panel _canvasFrame = new Panel();
         private string _filePath;
         private bool _dirty;
         private bool _diagnosticMode;
@@ -26,8 +27,16 @@ namespace GraphEditor
             // 经典外观：交给系统绘制，不做自绘
             BackColor = SystemColors.Control;
             Padding = new Padding(0);
+
+            // 只给「绘图区域」加 1px 黑色边框：黑底容器 + 1px 内边距，
+            // 画布停靠其内，四周露出纯黑细边。
+            // （不要套在 TabControl 上，那样标签条也会被黑边包住。）
+            _canvasFrame.BackColor = Color.Black;
+            _canvasFrame.Padding = new Padding(1);
+            _canvasFrame.Dock = DockStyle.Fill;
             _canvas.Dock = DockStyle.Fill;
-            Controls.Add(_canvas);
+            _canvasFrame.Controls.Add(_canvas);
+            Controls.Add(_canvasFrame);
 
             _canvas.SelectionChanged += delegate { RaiseStateChanged(); };
             _canvas.CanvasChanged += delegate { MarkDirty(); };

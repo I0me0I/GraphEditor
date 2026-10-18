@@ -1804,8 +1804,8 @@ namespace GraphEditor.Tests
                 // 容器四周各留 1px 给黑色边框
                 CheckEqual(form.DocumentArea.Width, singleHost.Width,
                     "容器宽度等于工作区宽度（" + singleHost.Width + " / " + form.DocumentArea.Width + "）");
-                CheckEqual(form.DocumentArea.Width - 2, singleTabs.Width,
-                    "标签控件占满容器内部（左右各 1px 黑边）");
+                CheckEqual(form.DocumentArea.Width, singleTabs.Width,
+                    "标签控件占满工作区宽度（黑边在绘图区域内部，不占这里）");
                 CheckEqual(form.DocumentArea.Height, singleHost.Height, "容器高度等于工作区高度");
                 form.DocumentArea.SplitWith(form.ActiveDocumentView, Orientation.Horizontal);
                 Check(form.DocumentArea.IsSplit, "可以再次分栏（上下）");

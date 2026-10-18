@@ -96,9 +96,9 @@ namespace GraphEditor
         /// </summary>
         private static void ConfigureHost(Panel host, TabControl tabs)
         {
-            host.BackColor = Color.Black;
-            host.Padding = new Padding(1);
-            host.Dock = DockStyle.Fill;
+            // 承载面板只负责布局，不再画边框（黑边改到绘图区域内部）
+            host.BackColor = SystemColors.Control;
+            host.Padding = new Padding(0);
             tabs.Dock = DockStyle.Fill;
             host.Controls.Add(tabs);
         }
