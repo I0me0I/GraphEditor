@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.2.0-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-632%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.2.1-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-639%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -260,7 +260,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **632 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **639 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -274,10 +274,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 632    失败: 0
+通过: 639    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=632 failed=0
+RESULT passed=639 failed=0
 ```
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。

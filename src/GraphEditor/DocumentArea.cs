@@ -45,8 +45,10 @@ namespace GraphEditor
 
         public DocumentArea()
         {
-            // 经典 Windows 外观：MDI 工作区底色
-            BackColor = SystemColors.AppWorkspace;
+            // 使用与 Windows STATIC/对话框一致的系统灰。
+            // 不要用 AppWorkspace —— 那是 MDI 时代的深灰（#ABABAB），
+            // 会被 SplitContainer 继承成「更深的分割条」。
+            BackColor = SystemColors.Control;
 
             _split.Dock = DockStyle.Fill;
             _split.Orientation = Orientation.Vertical;

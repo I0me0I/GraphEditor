@@ -92,6 +92,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandSelection", TestRubberBandSelection);
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
+                RunSelected(only, "TestSurfaceColors", TestSurfaceColors);
                 RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
                 RunSelected(only, "TestDropPreviewZones", TestDropPreviewZones);
                 RunSelected(only, "TestDefaultsAndOppositeEdges", TestDefaultsAndOppositeEdges);
@@ -1727,6 +1728,43 @@ namespace GraphEditor.Tests
         /// 标签式多文档：多个文档以标签页共存，各文档独立，菜单作用于当前文档；
         /// 支持分栏。
         /// </summary>
+        /// <summary>
+        /// 界面各层的底色必须与 Windows STATIC/对话框一致（SystemColors.Control），
+        /// 不能出现更深的灰（曾经误用 AppWorkspace #ABABAB，被分割条继承）。
+        /// </summary>
+        private static void TestSurfaceColors()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                Color control = SystemColors.Control;
+
+                CheckEqual(control.ToArgb(), form.DocumentArea.BackColor.ToArgb(),
+                    "文档区域底色 = SystemColors.Control（不应用 AppWorkspace）");
+
+                DocumentView doc = form.ActiveDocumentView;
+                Check(doc != null, "存在活动文档");
+                if (doc != null)
+                {
+                    TabPage page = (TabPage)doc.Parent;
+                    TabControl tabs = (TabControl)page.Parent;
+                    CheckEqual(control.ToArgb(), tabs.BackColor.ToArgb(),
+                        "TabControl 底色 = SystemColors.Control");
+                    CheckEqual(control.ToArgb(), page.BackColor.ToArgb(),
+                        "TabPage 底色 = SystemColors.Control");
+                    CheckEqual(control.ToArgb(), doc.BackColor.ToArgb(),
+                        "文档视图底色 = SystemColors.Control");
+                    CheckEqual(Color.White.ToArgb(), doc.CanvasArea.BackColor.ToArgb(),
+                        "画布仍是白色（内容区，不是界面灰）");
+                }
+
+                Check(SystemColors.Control.ToArgb() != SystemColors.AppWorkspace.ToArgb(),
+                    "Control 与 AppWorkspace 确实是两种灰（"
+                    + SystemColors.Control + " / " + SystemColors.AppWorkspace + ")");
+            }
+        }
+
+
         private static void TestTabbedDocuments()
         {
             using (MainForm form = new MainForm())
