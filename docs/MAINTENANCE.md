@@ -73,8 +73,10 @@ git log --format='%an <%ae>' | Sort-Object -Unique
 # 2) 被追踪文件里不应出现本机路径、用户名、私人邮箱
 git ls-files | ForEach-Object { Select-String -Path $_ -Pattern 'C:\\Users','D:\\Projects','@gmail','@qq\.com' }
 
-# 3) 不应有密钥类内容
-git ls-files | ForEach-Object { Select-String -Path $_ -Pattern 'github_pat_','ghp_','PRIVATE KEY' }
+# 3) 不应有密钥类内容（用完整形态匹配，否则会命中本文档里的模式字符串本身）
+git ls-files | ForEach-Object {
+    Select-String -Path $_ -Pattern 'github_pat_[A-Za-z0-9_]{20,}','ghp_[A-Za-z0-9]{30,}','BEGIN [A-Z ]*PRIVATE KEY'
+}
 ```
 
 `C:\Windows\...\csc.exe` 这类系统路径可以保留，它不是个人信息。
