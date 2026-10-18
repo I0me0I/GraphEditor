@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.3.3.0" name="GraphEditor.app" />
+  <assemblyIdentity version="1.3.4.0" name="GraphEditor.app" />
 
   <!-- 高 DPI：PerMonitorV2 让程序在 125%/150%/200% 缩放下按实际像素渲染，
        而不是被 Windows 位图拉伸（否则文字发虚，看起来像老程序）。

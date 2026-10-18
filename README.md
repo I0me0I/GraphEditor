@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.3.3-blueviolet)](#)
+[![Version](https://img.shields.io/badge/version-1.3.4-blueviolet)](#)
 [![Tests](https://img.shields.io/badge/tests-659%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -413,7 +413,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 - 菜单栏、状态栏、右键菜单、对话框：`MenuStrip` / `StatusStrip` / `ContextMenuStrip` / `MessageBox` 原样使用
 - 标签页与面板：原生 `TabControl`
 - 滚动条：原生 `VScrollBar` / `HScrollBar`
-- 拖动反馈：系统光标 + `ControlPaint.DrawReversibleFrame`（可逆虚线框，和资源管理器一致）
+- 拖动反馈：系统光标 + 一个半透明置顶小窗口标出落点
 - 字体：`SystemFonts.MessageBoxFont`，随系统语言与 DPI 自动匹配
 
 以 [7-Zip](https://www.7-zip.org/) 为参考：只用系统控件，不追求自定义视觉。

@@ -49,7 +49,7 @@ namespace GraphEditor
         private Point _dragStartScreen;
         private bool _dragging;
         private DropPlacement _dropPlacement;
-        private Rectangle _dropHintScreen = Rectangle.Empty;
+        private DropHintForm _dropHint;
 
         /// <summary>活动文档变化（切换标签、关闭标签、拆分/合并）时触发。</summary>
         public event EventHandler ActiveDocumentChanged;
@@ -966,7 +966,7 @@ namespace GraphEditor
             return DropPlacement.Bottom;
         }
 
-        /// <summary>客户区坐标处最上层的面板；没有则退回活动面板。</summary>
+        /// <summary>客户区坐标处的面板；不在任何面板内（例如压在分割条上）返回 null。</summary>
         private Pane TargetPaneOf(Point client)
         {
             Point screen = PointToScreen(client);
@@ -975,7 +975,7 @@ namespace GraphEditor
                 Rectangle hostScreen = pane.Host.RectangleToScreen(pane.Host.ClientRectangle);
                 if (hostScreen.Contains(screen)) return pane;
             }
-            return ActivePane;
+            return null;    // 压在分割条上/面板之外：不给提示，避免预览乱跳
         }
 
         /// <summary>预览应覆盖的矩形（客户区坐标）：就是文档将要落到的那个半区。</summary>
@@ -1010,24 +1010,57 @@ namespace GraphEditor
         }
 
         /// <summary>
-        /// 拖动预览：用系统的「可逆虚线框」（ControlPaint.DrawReversibleFrame），
-        /// 和资源管理器拖动时的虚线框完全一样，不做自绘填充。
+        /// 拖动预览：一个无边框、半透明的置顶小窗口，盖在「文档将要落到的那个半区」上。
+        ///
+        /// 不用 ControlPaint.DrawReversibleFrame —— 它用 XOR 直接画在屏幕上，
+        /// 拖动期间只要窗口重绘过（标签悬停、面板布局变化），擦除就会留下残影，
+        /// 实测会出现「虚线框残留 + 在左右/上下之间乱跳」。
+        /// 独立窗口不受宿主重绘影响，位置也只会跟随我们的计算。
         /// </summary>
         private void ShowDropHint(Rectangle clientRect)
         {
-            Rectangle screen = RectangleToScreen(clientRect);
-            if (screen == _dropHintScreen) return;
+            if (_dropHint == null || _dropHint.IsDisposed) _dropHint = new DropHintForm();
 
-            HideDropHint();
-            _dropHintScreen = screen;
-            ControlPaint.DrawReversibleFrame(screen, SystemColors.ControlText, FrameStyle.Dashed);
+            Rectangle screen = RectangleToScreen(clientRect);
+            if (_dropHint.Bounds != screen) _dropHint.Bounds = screen;
+            if (!_dropHint.Visible) _dropHint.Show(this);
         }
 
         private void HideDropHint()
         {
-            if (_dropHintScreen == Rectangle.Empty) return;
-            ControlPaint.DrawReversibleFrame(_dropHintScreen, SystemColors.ControlText, FrameStyle.Dashed);
-            _dropHintScreen = Rectangle.Empty;
+            if (_dropHint != null && !_dropHint.IsDisposed && _dropHint.Visible) _dropHint.Hide();
+        }
+
+        /// <summary>拖动时的落点提示窗：不抢焦点、不接收鼠标、半透明。</summary>
+        private sealed class DropHintForm : Form
+        {
+            public DropHintForm()
+            {
+                FormBorderStyle = FormBorderStyle.None;
+                ShowInTaskbar = false;
+                StartPosition = FormStartPosition.Manual;
+                BackColor = SystemColors.Highlight;
+                Opacity = 0.3;
+                TopMost = true;
+                // 注意：不能设 Enabled = false，那样 Show() 会抛异常。
+                // 拖动期间标签控件持有鼠标捕获，事件不会落到这个浮层上。
+            }
+
+            protected override bool ShowWithoutActivation
+            {
+                get { return true; }
+            }
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ExStyle |= 0x08000000;   // WS_EX_NOACTIVATE
+                    cp.ExStyle |= 0x00000080;   // WS_EX_TOOLWINDOW
+                    return cp;
+                }
+            }
         }
     }
 }
