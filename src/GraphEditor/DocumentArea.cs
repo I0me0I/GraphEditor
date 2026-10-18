@@ -50,6 +50,7 @@ namespace GraphEditor
         private bool _dragging;
         private DropPlacement _dropPlacement;
         private DropHintForm _dropHint;
+        private ContextMenuStrip _tabMenu;
 
         /// <summary>活动文档变化（切换标签、关闭标签、拆分/合并）时触发。</summary>
         public event EventHandler ActiveDocumentChanged;
@@ -101,6 +102,7 @@ namespace GraphEditor
             tabs.MouseDown += OnTabsMouseDown;
             tabs.MouseMove += OnTabsMouseMove;
             tabs.MouseUp += OnTabsMouseUp;
+            tabs.MouseUp += OnTabsRightClick;      // 右键标签 → 「关闭文档」菜单
             tabs.SelectedIndexChanged += delegate
             {
                 RaiseActiveChanged();
@@ -787,6 +789,59 @@ namespace GraphEditor
             if (pane != null) _active = pane;
             page.Focus();
             RaiseActiveChanged();
+        }
+
+        // ================= 标签右键菜单 =================
+
+        /// <summary>右键点标签：弹出「关闭文档」菜单。</summary>
+        private void OnTabsRightClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right) return;
+            TabControl tabs = (TabControl)sender;
+            DocumentView doc = DocumentAtTab(tabs, e.Location);
+            if (doc == null) return;
+
+            // 右键同时切换到这个标签，符合 Windows 习惯
+            TabPage page = doc.Tag as TabPage;
+            if (page != null && page.Parent == tabs) tabs.SelectedTab = page;
+            Pane pane = PaneOf(tabs);
+            if (pane != null) _active = pane;
+
+            // 复用同一个菜单实例，避免每次右键都新建窗口对象
+            if (_tabMenu == null || _tabMenu.IsDisposed) _tabMenu = new ContextMenuStrip();
+            FillTabMenu(_tabMenu, doc);
+            try { _tabMenu.Show(tabs, e.Location); }
+            catch (Exception) { }
+        }
+
+        /// <summary>标签菜单：目前只有「关闭文档」。</summary>
+        internal ContextMenuStrip BuildTabMenu(DocumentView doc)
+        {
+            ContextMenuStrip menu = new ContextMenuStrip();
+            FillTabMenu(menu, doc);
+            return menu;
+        }
+
+        /// <summary>把「关闭文档」填进指定菜单。</summary>
+        internal void FillTabMenu(ContextMenuStrip menu, DocumentView doc)
+        {
+            menu.Items.Clear();
+            ToolStripMenuItem close = new ToolStripMenuItem("关闭文档(&C)");
+            close.ShortcutKeyDisplayString = "Ctrl+W";
+            DocumentView captured = doc;
+            close.Click += delegate { CloseDocument(captured); };
+            menu.Items.Add(close);
+        }
+
+        /// <summary>客户区坐标处的标签对应哪个文档；不在任何标签上返回 null。</summary>
+        private static DocumentView DocumentAtTab(TabControl tabs, Point location)
+        {
+            for (int i = 0; i < tabs.TabCount; i++)
+            {
+                if (!tabs.GetTabRect(i).Contains(location)) continue;
+                return tabs.TabPages[i].Tag as DocumentView;
+            }
+            return null;
         }
 
         // ================= 拖动标签 =================

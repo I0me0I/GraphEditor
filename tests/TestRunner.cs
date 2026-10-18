@@ -93,6 +93,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
                 RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
+                RunSelected(only, "TestTabContextMenu", TestTabContextMenu);
                 RunSelected(only, "TestUntitledAndDropZones", TestUntitledAndDropZones);
                 RunSelected(only, "TestDropPreviewZones", TestDropPreviewZones);
                 RunSelected(only, "TestDefaultsAndOppositeEdges", TestDefaultsAndOppositeEdges);
@@ -1865,6 +1866,28 @@ namespace GraphEditor.Tests
                 CheckEqual(1, da.PaneCount, "合并回单面板");
                 Check(!da.IsSplit, "合并后不再是拆分状态");
                 CheckEqual(6, da.DocumentCount, "合并后文档数不变");
+            }
+        }
+
+        /// <summary>右键标签弹出的菜单里应当有「关闭文档」，并且能真的关掉那个文档。</summary>
+        private static void TestTabContextMenu()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                DocumentView doc = form.ActiveDocumentView;
+                Check(doc != null, "存在活动文档");
+
+                ContextMenuStrip menu = form.DocumentArea.BuildTabMenu(doc);
+                CheckEqual(1, menu.Items.Count, "标签菜单只有一个菜单项");
+                Check(menu.Items[0].Text != null && menu.Items[0].Text.StartsWith("关闭文档"),
+                    "菜单项是「关闭文档」（实际：" + menu.Items[0].Text + "）");
+
+                // 点一下应当关掉该文档
+                int before = form.DocumentArea.DocumentCount;
+                menu.Items[0].PerformClick();
+                CheckEqual(before - 1, form.DocumentArea.DocumentCount, "点「关闭文档」后少了一个文档");
+                menu.Dispose();
             }
         }
 
