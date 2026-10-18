@@ -92,7 +92,8 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandSelection", TestRubberBandSelection);
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
-                RunSelected(only, "TestMdiDocuments", TestMdiDocuments);
+                RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
+                RunSelected(only, "TestDefaultsAndOppositeEdges", TestDefaultsAndOppositeEdges);
                 RunSelected(only, "TestGraphTypeOptions", TestGraphTypeOptions);
                 RunSelected(only, "TestGraphTypeMenu", TestGraphTypeMenu);
                 RunSelected(only, "TestMenusAndDefaultColor", TestMenusAndDefaultColor);
@@ -164,6 +165,7 @@ namespace GraphEditor.Tests
         private static void TestModelBasics()
         {
             GraphCanvas c = new GraphCanvas(800, 600);
+            c.MultiGraph = true;   // 默认是单重图，这个用例要测自环
             Vertex a = c.AddVertex(100, 100);
             Vertex b = c.AddVertex(200, 200);
             Edge ab = c.AddEdge(a.Id, b.Id);
@@ -200,6 +202,7 @@ namespace GraphEditor.Tests
             // 内容收回时尺寸随之收缩（但不小于传入的最小尺寸）
             GraphCanvas shrink = new GraphCanvas(5000, 5000);
             shrink.VertexRadius = 20;
+            shrink.VertexLabelPlacement = VertexLabelPlacement.Inside;   // 与名字位置解耦
             shrink.AddVertex(100, 100);
             shrink.FitCanvasToContent(60, 400, 300, 20000);
             CheckEqual(400.0, shrink.CanvasWidth, "内容很小的时候画布收缩到最小宽度");
@@ -231,6 +234,7 @@ namespace GraphEditor.Tests
             CheckEqual("A1", GraphCanvas.AlphabetName(26), "第 27 个名字是 A1");
 
             GraphCanvas c = new GraphCanvas(600, 400);
+            c.MultiGraph = true;   // 这个用例要测重边命名
             Vertex v1 = c.AddVertex(10, 10);
             Vertex v2 = c.AddVertex(20, 20);
             Vertex v3 = c.AddVertex(30, 30);
@@ -274,6 +278,7 @@ namespace GraphEditor.Tests
 
             GraphCanvas c = new GraphCanvas(800, 600);
             c.VertexRadius = 20;
+            c.MultiGraph = true;   // 下面要测自环与多重边
             Vertex a = c.AddVertex(100, 100);
             Vertex b = c.AddVertex(300, 100);
             Edge e = c.AddEdge(a.Id, b.Id);
@@ -359,6 +364,7 @@ namespace GraphEditor.Tests
         private static GraphCanvas BuildSample()
         {
             GraphCanvas c = new GraphCanvas(900, 640);
+            c.MultiGraph = true;   // 示例图含一条自环
             c.VertexRadius = 22;
             c.VertexShape = VertexShape.Circle;
             c.EdgeWidth = 2.5;
@@ -479,7 +485,7 @@ namespace GraphEditor.Tests
             GraphCanvas minimal = GraphIo.Deserialize("{\"vertices\":[{\"id\":1,\"x\":10,\"y\":20}],\"edges\":[]}");
             CheckEqual(1, minimal.Vertices.Count, "最小文件：读到 1 个顶点");
             CheckEqual(1200.0, minimal.CanvasWidth, "最小文件：画布宽度取默认值");
-            CheckEqual(18.0, minimal.VertexRadius, "最小文件：顶点半径取默认值");
+            CheckEqual(10.0, minimal.VertexRadius, "最小文件：顶点半径取默认值（10）");
 
             // 悬空边应被丢弃
             GraphCanvas dangling = GraphIo.Deserialize(
@@ -740,6 +746,7 @@ namespace GraphEditor.Tests
                 control.Size = new Size(800, 600);
                 GraphCanvas c = new GraphCanvas(800, 600);
                 c.VertexRadius = 20;
+                c.MultiGraph = true;   // 本用例要测反向边与自环
                 control.Canvas = c;
 
                 Vertex a = c.AddVertex(100, 100, "A");
@@ -1197,6 +1204,7 @@ namespace GraphEditor.Tests
             {
                 control.Size = new Size(600, 400);
                 GraphCanvas c = new GraphCanvas(600, 400);
+                c.MultiGraph = true;   // 本用例要在已有边上再建一条
                 control.Canvas = c;
                 control.CenterOnOrigin();
 
@@ -1475,6 +1483,7 @@ namespace GraphEditor.Tests
             {
                 form.CreateControl();
                 GraphCanvas c = form.CanvasArea.Canvas;
+                c.MultiGraph = true;   // 本用例要连续在 A、B 之间建多条边
 
                 ToolStripMenuItem properties = FindTopMenu(form.MainMenuBar, "属性");
                 properties.DropDownItems.Clear();
@@ -1713,7 +1722,11 @@ namespace GraphEditor.Tests
         /// 多文档界面：打开多个文档时各自独立（工作区、图模型、修改状态互不影响），
         /// 菜单作用于当前活动文档。
         /// </summary>
-        private static void TestMdiDocuments()
+        /// <summary>
+        /// 标签式多文档：多个文档以标签页共存，各文档独立，菜单作用于当前文档；
+        /// 支持分栏。
+        /// </summary>
+        private static void TestTabbedDocuments()
         {
             using (MainForm form = new MainForm())
             {
@@ -1721,34 +1734,32 @@ namespace GraphEditor.Tests
                 System.Reflection.MethodInfo create = typeof(MainForm).GetMethod("CreateDocument",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
-                Check(form.IsMdiContainer, "主窗口是 MDI 容器");
-                CheckEqual(1, form.MdiChildren.Length, "启动时有一个文档窗口");
+                Check(!form.IsMdiContainer, "不再使用层叠式 MDI（改为标签页）");
+                CheckEqual(1, form.DocumentArea.DocumentCount, "启动时有一个文档");
 
                 create.Invoke(form, null);
                 create.Invoke(form, null);
-                CheckEqual(3, form.MdiChildren.Length, "再新建两个后共有三个文档窗口");
-                Check(form.ActiveDocumentWindow != null, "存在活动文档窗口");
+                CheckEqual(3, form.DocumentArea.DocumentCount, "再新建两个后共有三个文档");
+                Check(form.ActiveDocumentView != null, "存在活动文档");
+                Check(!form.DocumentArea.IsSplit, "默认单栏（不显示分栏）");
 
                 CanvasControl first = null;
                 System.Collections.Generic.HashSet<int> seen = new System.Collections.Generic.HashSet<int>();
-                foreach (Form child in form.MdiChildren)
+                foreach (DocumentView d in form.DocumentArea.AllDocuments)
                 {
-                    CanvasControl canvas = (CanvasControl)child.GetType()
-                        .GetProperty("CanvasArea").GetValue(child, null);
-                    Check(canvas != null, "子窗口都有工作区");
+                    CanvasControl canvas = d.CanvasArea;
+                    Check(canvas != null, "每个文档都有工作区");
                     Check(seen.Add(canvas.GetHashCode()), "各文档的工作区是不同实例");
-                    Check(canvas.Canvas != null, "子窗口都挂着图模型");
+                    Check(canvas.Canvas != null, "每个文档都挂着图模型");
                     if (first == null) first = canvas;
                 }
 
-                // 在一个文档里加顶点，不影响另一个
+                // 在一个文档里加顶点，不影响其它文档
                 first.Canvas.AddVertex(0, 0, "X");
                 int others = 0;
-                foreach (Form child in form.MdiChildren)
+                foreach (DocumentView d in form.DocumentArea.AllDocuments)
                 {
-                    CanvasControl canvas = (CanvasControl)child.GetType()
-                        .GetProperty("CanvasArea").GetValue(child, null);
-                    if (canvas != first) others += canvas.Canvas.Vertices.Count;
+                    if (d.CanvasArea != first) others += d.Canvas.Vertices.Count;
                 }
                 CheckEqual(0, others, "一个文档里加顶点不影响其它文档");
 
@@ -1764,29 +1775,87 @@ namespace GraphEditor.Tests
                 FindMenuItem(graph, "有向图").PerformClick();
                 Check(before != activeGraph.Directed, "菜单切换作用于活动文档");
 
-                int stillDefault = 0;
-                foreach (Form child in form.MdiChildren)
+                int stillSame = 0;
+                foreach (DocumentView d in form.DocumentArea.AllDocuments)
                 {
-                    CanvasControl canvas = (CanvasControl)child.GetType()
-                        .GetProperty("CanvasArea").GetValue(child, null);
-                    if (canvas != active && canvas.Canvas.Directed) stillDefault++;
+                    if (d.CanvasArea != active && d.Canvas.Directed == before) stillSame++;
                 }
-                CheckEqual(2, stillDefault, "其它文档的有向图设置不受影响");
+                CheckEqual(2, stillSame, "其它文档的有向图设置不受影响");
+
+                // 分栏：把活动文档移到第二栏
+                DocumentView moved = form.ActiveDocumentView;
+                form.DocumentArea.SplitWith(moved, Orientation.Vertical);
+                Check(form.DocumentArea.IsSplit, "分栏后处于双栏状态");
+                CheckEqual(3, form.DocumentArea.DocumentCount, "分栏不改变文档数量");
+
+                // 合并回单栏
+                form.DocumentArea.MergeToSinglePane();
+                Check(!form.DocumentArea.IsSplit, "合并后回到单栏");
+                CheckEqual(3, form.DocumentArea.DocumentCount, "合并后文档数量不变");
             }
         }
 
         /// <summary>
         /// 图类型：多重图 / 有向图。
-        ///   - 默认两者开启
+        ///   - 默认都是关闭（无向单重图）
         ///   - 关闭多重图时清理重边与自环，之后也不允许再建
-        ///   - 关闭有向图只是隐藏箭头，边保留
+        ///   - 关闭有向图只是隐藏箭头，边保留；单重图上关闭有向图会删掉重复的 A→B / B→A
         ///   - 两者随 .graph 往返
         /// </summary>
+        /// <summary>
+        /// 默认值：无向单重图、顶点半径 10、名字显示在上方。
+        /// 以及 A→B 与 B→A 两条边不能重叠。
+        /// </summary>
+        private static void TestDefaultsAndOppositeEdges()
+        {
+            GraphCanvas def = new GraphCanvas();
+            Check(!def.MultiGraph, "默认是单重图（不允许多重边）");
+            Check(!def.Directed, "默认是无向图");
+            CheckEqual(10.0, def.VertexRadius, "默认顶点半径是 10");
+            CheckEqual(VertexLabelPlacement.Above, def.VertexLabelPlacement, "默认名字显示在上方");
+
+            // 有了方向相反的边时，两条边要在直线上分居两侧，不能重叠
+            GraphCanvas c = new GraphCanvas(800, 600);
+            c.MultiGraph = true;
+            c.Directed = true;
+            Vertex a = c.AddVertex(100, 100, "A");
+            Vertex b = c.AddVertex(300, 100, "B");
+            Edge ab = c.AddEdge(a.Id, b.Id, "ab");
+            Edge ba = c.AddEdge(b.Id, a.Id, "ba");
+            PointD[] pab = c.EdgePolyline(ab);
+            PointD[] pba = c.EdgePolyline(ba);
+
+            // 中点法向偏移必须一正一负（相对 A→B 的方向）
+            double midAbY = (pab[pab.Length / 2].Y + pab[pab.Length / 2 - 1].Y) / 2.0;
+            double midBaY = (pba[pba.Length / 2].Y + pba[pba.Length / 2 - 1].Y) / 2.0;
+            Check(Math.Abs(midAbY - 100) > 1.0, "A→B 的边被弯到直线一侧（y=" + midAbY.ToString("0.#") + "）");
+            Check(Math.Abs(midBaY - 100) > 1.0, "B→A 的边也被弯开（y=" + midBaY.ToString("0.#") + "）");
+            Check((midAbY - 100) * (midBaY - 100) < 0,
+                "两条反向边分居直线两侧（" + midAbY.ToString("0.#") + " / " + midBaY.ToString("0.#") + "）");
+
+            // 无向单重图上关闭有向图时，A→B 与 B→A 会被合并成一条
+            GraphCanvas s = new GraphCanvas(800, 600);
+            s.MultiGraph = false;
+            s.Directed = true;
+            Vertex p = s.AddVertex(0, 0, "P");
+            Vertex q = s.AddVertex(200, 0, "Q");
+            Check(s.AddEdge(p.Id, q.Id) != null, "有向时可以建 P→Q");
+            Check(s.AddEdge(q.Id, p.Id) != null, "有向时可以建 Q→P");
+            CheckEqual(2, s.Edges.Count, "此时有两条方向相反的边");
+            s.Directed = false;
+            int removed = s.RemoveExtraEdges();
+            CheckEqual(1, removed, "改成无向后删掉其中一条");
+            CheckEqual(1, s.Edges.Count, "只剩一条边");
+        }
+
         private static void TestGraphTypeOptions()
         {
             GraphCanvas c = new GraphCanvas(800, 600);
-            Check(c.MultiGraph, "默认开启多重图");
-            Check(c.Directed, "默认开启有向图");
+            Check(!c.MultiGraph, "默认不是多重图（单重图）");
+            Check(!c.Directed, "默认不是有向图（无向）");
+
+            c.MultiGraph = true;
+            c.Directed = true;
 
             Vertex a = c.AddVertex(100, 100, "A");
             Vertex b = c.AddVertex(300, 100, "B");
@@ -1837,8 +1906,8 @@ namespace GraphEditor.Tests
             Check(!loaded.Directed, "往返：有向图标记保留（false）");
 
             GraphCanvas loaded2 = GraphIo.Deserialize(GraphIo.Serialize(new GraphCanvas(800, 600)));
-            Check(loaded2.MultiGraph, "往返：多重图标记保留（默认 true）");
-            Check(loaded2.Directed, "往返：有向图标记保留（默认 true）");
+            Check(!loaded2.MultiGraph, "往返：多重图标记保留（默认 false）");
+            Check(!loaded2.Directed, "往返：有向图标记保留（默认 false）");
         }
 
         /// <summary>菜单里「属性 → 图」的两个勾选项能切换并生效。</summary>
@@ -1849,6 +1918,8 @@ namespace GraphEditor.Tests
                 form.CreateControl();
                 CanvasControl canvas = form.CanvasArea;
                 GraphCanvas c = canvas.Canvas;
+                c.MultiGraph = true;   // 本用例要先造出重边与自环
+                c.Directed = true;
 
                 Vertex a = c.AddVertex(canvas.WorldToImage(-100, 0).X, canvas.WorldToImage(-100, 0).Y, "A");
                 Vertex b = c.AddVertex(canvas.WorldToImage(100, 0).X, canvas.WorldToImage(100, 0).Y, "B");
@@ -2388,6 +2459,7 @@ namespace GraphEditor.Tests
             CheckEqual("b", edgeAlpha.AddEdge(b3.Id, c3.Id).Name, "边字母命名递增");
 
             GraphCanvas edgeFromEnds = new GraphCanvas(600, 400);
+            edgeFromEnds.MultiGraph = true;   // 下面要建同一对顶点之间的第二条边
             edgeFromEnds.EdgeNaming = NamingRule.FromEndpoints;
             Vertex a4 = edgeFromEnds.AddVertex(100, 100, "A");
             Vertex b4 = edgeFromEnds.AddVertex(200, 100, "B");
@@ -2437,7 +2509,7 @@ namespace GraphEditor.Tests
             // 旧文件（没有这些字段）应使用默认值
             GraphCanvas legacy = GraphIo.Deserialize("{\"vertices\":[{\"id\":1,\"x\":10,\"y\":10}]}");
             CheckEqual(NamingRule.Alphabetic, legacy.VertexNaming, "旧文件使用默认顶点命名规则");
-            CheckEqual(VertexLabelPlacement.Inside, legacy.VertexLabelPlacement, "旧文件使用默认顶点名字位置");
+            CheckEqual(VertexLabelPlacement.Above, legacy.VertexLabelPlacement, "旧文件使用默认顶点名字位置（上方）");
             CheckEqual(EdgeLabelPlacement.Above, legacy.EdgeLabelPlacement, "旧文件使用默认边名字位置");
         }
 

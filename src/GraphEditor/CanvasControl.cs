@@ -2028,42 +2028,61 @@ namespace GraphEditor
                 {
                     format.Alignment = StringAlignment.Center;
                     format.LineAlignment = StringAlignment.Center;
+                    // 名字永远单行：顶点再小也不换行，宁可溢出到圆外也要完整显示
+                    format.FormatFlags = StringFormatFlags.NoWrap;
+                    format.Trimming = StringTrimming.None;
 
                     foreach (Vertex v in _canvas.Vertices)
                     {
                         if (string.IsNullOrEmpty(v.Name)) continue;
                         Color fill = _canvas.EffectiveColor(v);
                         double r = _canvas.VertexRadius;
-                        RectangleF rect;
                         if (_canvas.VertexLabelPlacement == VertexLabelPlacement.Inside)
                         {
-                            textBrush.Color = GraphCanvas.ContrastTextColor(fill);
-                            rect = new RectangleF(
-                                (float)(v.X - r), (float)(v.Y - r * 1.2),
-                                (float)(r * 2), (float)(r * 2.4));
-                        }
-                        else
-                        {
-                            textBrush.Color = Color.FromArgb(0x20, 0x20, 0x20);
-                            double gap = r + 3;
-                            SizeF size = g.MeasureString(v.Name, font);
-                            float w = size.Width + 4;
-                            float h = size.Height + 2;
-                            switch (_canvas.VertexLabelPlacement)
+                            // 内部：以顶点中心为基准点绘制（点重载不换行、不裁剪）。
+                            // 但顶点很小时文字会溢出到圆外，而「内部」用的是与底色对比的
+                            // 白字，溢出的部分在白底上就看不见了。所以放不下时改画到顶点
+                            // 上方（深色字），保证名字始终单行且完整可见。
+                            SizeF inner = g.MeasureString(v.Name, font, int.MaxValue, format);
+                            double usable = r * 2 * 0.92;
+                            if (inner.Width <= usable)
                             {
-                                case VertexLabelPlacement.Above:
-                                    rect = new RectangleF((float)v.X - w / 2, (float)(v.Y - gap) - h, w, h);
-                                    break;
-                                case VertexLabelPlacement.Below:
-                                    rect = new RectangleF((float)v.X - w / 2, (float)(v.Y + gap), w, h);
-                                    break;
-                                case VertexLabelPlacement.Left:
-                                    rect = new RectangleF((float)(v.X - gap) - w, (float)v.Y - h / 2, w, h);
-                                    break;
-                                default: // Right
-                                    rect = new RectangleF((float)(v.X + gap), (float)v.Y - h / 2, w, h);
-                                    break;
+                                textBrush.Color = GraphCanvas.ContrastTextColor(fill);
+                                g.DrawString(v.Name, font, textBrush, (float)v.X, (float)v.Y, format);
                             }
+                            else
+                            {
+                                textBrush.Color = Color.FromArgb(0x20, 0x20, 0x20);
+                                double gapIn = r + 3;
+                                float wIn = inner.Width + 4;
+                                float hIn = inner.Height + 2;
+                                RectangleF rectIn = new RectangleF(
+                                    (float)v.X - wIn / 2, (float)(v.Y - gapIn) - hIn, wIn, hIn);
+                                g.DrawString(v.Name, font, textBrush, rectIn, format);
+                            }
+                            continue;
+                        }
+
+                        textBrush.Color = Color.FromArgb(0x20, 0x20, 0x20);
+                        double gap = r + 3;
+                        SizeF size = g.MeasureString(v.Name, font, int.MaxValue, format);
+                        float w = size.Width + 4;
+                        float h = size.Height + 2;
+                        RectangleF rect;
+                        switch (_canvas.VertexLabelPlacement)
+                        {
+                            case VertexLabelPlacement.Above:
+                                rect = new RectangleF((float)v.X - w / 2, (float)(v.Y - gap) - h, w, h);
+                                break;
+                            case VertexLabelPlacement.Below:
+                                rect = new RectangleF((float)v.X - w / 2, (float)(v.Y + gap), w, h);
+                                break;
+                            case VertexLabelPlacement.Left:
+                                rect = new RectangleF((float)(v.X - gap) - w, (float)v.Y - h / 2, w, h);
+                                break;
+                            default: // Right
+                                rect = new RectangleF((float)(v.X + gap), (float)v.Y - h / 2, w, h);
+                                break;
                         }
                         g.DrawString(v.Name, font, textBrush, rect, format);
                     }

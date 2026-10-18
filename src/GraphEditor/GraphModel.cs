@@ -149,7 +149,7 @@ namespace GraphEditor
         public double CanvasHeight;
 
         // 顶点样式（全局，作用于所有顶点）
-        public double VertexRadius = 18.0;
+        public double VertexRadius = 10.0;
         public VertexShape VertexShape = VertexShape.Circle;
         public Color DefaultVertexColor = Color.FromArgb(0x2D, 0x7D, 0xD2);
 
@@ -161,20 +161,20 @@ namespace GraphEditor
         // 命名规则与名字显示位置（全局）
         public NamingRule VertexNaming = NamingRule.Alphabetic;
         public NamingRule EdgeNaming = NamingRule.None;
-        public VertexLabelPlacement VertexLabelPlacement = VertexLabelPlacement.Inside;
+        public VertexLabelPlacement VertexLabelPlacement = VertexLabelPlacement.Above;
         public EdgeLabelPlacement EdgeLabelPlacement = EdgeLabelPlacement.Above;
 
         /// <summary>
         /// 是否允许多重图：同一对顶点之间可以有多条边、也允许自环。
         /// 关闭时（简单图）同一对顶点之间最多一条边，且不允许自环。
         /// </summary>
-        public bool MultiGraph = true;
+        public bool MultiGraph = false;
 
         /// <summary>
         /// 是否为有向图。为 true 时边在终点（V2）画箭头；
         /// 关闭时只是隐藏箭头，边本身保留（图从此按无向解释）。
         /// </summary>
-        public bool Directed = true;
+        public bool Directed = false;
 
         private readonly List<Vertex> _vertices = new List<Vertex>();
         private readonly List<Edge> _edges = new List<Edge>();
@@ -642,24 +642,35 @@ namespace GraphEditor
             double offset = 0;
             if (total > 1)
             {
-                offset = (index - (total - 1) / 2.0) * (VertexRadius * 0.9);
+                // 间距随顶点半径放大，但设下限：顶点很小时两条边也要能明显分开
+                double spacing = Math.Max(VertexRadius * 0.9, 16.0);
+                offset = (index - (total - 1) / 2.0) * spacing;
             }
+
+            // 弯曲方向必须用「规范化」的方向计算（按顶点 Id 排序），
+            // 否则 A→B 与 B→A 各自的法线相反，同号偏移会把它们推到同一侧、完全重叠。
+            bool reversed = a.Id > b.Id;
+            Vertex from = reversed ? b : a;
+            Vertex to = reversed ? a : b;
 
             if (Math.Abs(offset) < 0.01)
             {
                 return new PointD[] { new PointD(a.X, a.Y), new PointD(b.X, b.Y) };
             }
 
-            double dx = b.X - a.X;
-            double dy = b.Y - a.Y;
+            double dx = to.X - from.X;
+            double dy = to.Y - from.Y;
             double len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 1e-6) return new PointD[] { new PointD(a.X, a.Y), new PointD(b.X, b.Y) };
             double nx = -dy / len;
             double ny = dx / len;
-            double mx = (a.X + b.X) / 2.0 + nx * offset;
-            double my = (a.Y + b.Y) / 2.0 + ny * offset;
 
-            // 采样二次贝塞尔曲线
+            // 偏移直接用在规范化方向上：两条反向边共用同一套法线，
+            // 索引不同（0 / 1）自然落在直线两侧；不要再按方向取反，否则又会重叠。
+            double mx = (from.X + to.X) / 2.0 + nx * offset;
+            double my = (from.Y + to.Y) / 2.0 + ny * offset;
+
+            // 采样二次贝塞尔曲线（始终从 from 到 to，最后按原方向决定是否倒序）
             const int steps = 16;
             PointD[] pts = new PointD[steps + 1];
             for (int i = 0; i <= steps; i++)
@@ -667,9 +678,10 @@ namespace GraphEditor
                 double t = (double)i / steps;
                 double mt = 1 - t;
                 pts[i] = new PointD(
-                    mt * mt * a.X + 2 * mt * t * mx + t * t * b.X,
-                    mt * mt * a.Y + 2 * mt * t * my + t * t * b.Y);
+                    mt * mt * from.X + 2 * mt * t * mx + t * t * to.X,
+                    mt * mt * from.Y + 2 * mt * t * my + t * t * to.Y);
             }
+            if (reversed) Array.Reverse(pts);
             return pts;
         }
 

@@ -8,10 +8,12 @@ namespace GraphEditor
 {
     /// <summary>
     /// MDI 父窗口：菜单栏 + 状态栏，操作总是作用于「当前活动文档」。
-    /// 每个文档是一个 <see cref="DocumentForm"/> 子窗口，各自持有工作区与文件状态。
+    /// 文档以标签页形式摆放（<see cref="DocumentArea"/>），支持拖动标签分栏。
     /// </summary>
     public sealed class MainForm : Form
     {
+        private readonly DocumentArea _area = new DocumentArea();
+        private ToolStripMenuItem _windowMenu;
         private readonly MenuStrip _menu = new MenuStrip();
         private readonly StatusStrip _status = new StatusStrip();
         private readonly ToolStripStatusLabel _statusLeft = new ToolStripStatusLabel();
@@ -27,21 +29,10 @@ namespace GraphEditor
 
         private bool _diagnosticMode;
 
-        /// <summary>当前活动的文档窗口；没有文档时为 null。</summary>
-        private DocumentForm ActiveDocument
+        /// <summary>当前活动的文档；没有文档时为 null。</summary>
+        private DocumentView ActiveDocument
         {
-            get
-            {
-                DocumentForm doc = ActiveMdiChild as DocumentForm;
-                if (doc != null) return doc;
-                // 活动窗口不是文档（例如焦点在别处）时退回第一个文档
-                foreach (Form child in MdiChildren)
-                {
-                    DocumentForm candidate = child as DocumentForm;
-                    if (candidate != null) return candidate;
-                }
-                return null;
-            }
+            get { return _area.ActiveDocument; }
         }
 
         /// <summary>当前活动文档的工作区；没有文档时为 null。</summary>
@@ -49,7 +40,7 @@ namespace GraphEditor
         {
             get
             {
-                DocumentForm doc = ActiveDocument;
+                DocumentView doc = ActiveDocument;
                 return doc == null ? null : doc.CanvasArea;
             }
         }
@@ -77,7 +68,7 @@ namespace GraphEditor
         {
             try
             {
-                DocumentForm doc = ActiveDocument;
+                DocumentView doc = ActiveDocument;
                 if (doc == null) { doc = CreateDocument(); }
                 doc.LoadFile(path);
                 SetHint("已打开 " + Path.GetFileName(path)
@@ -102,15 +93,20 @@ namespace GraphEditor
             // 子窗口最小 420×340，这里保证父窗口放得下它再加上菜单/状态栏
             MinimumSize = new Size(560, 560);
             KeyPreview = true;
-            IsMdiContainer = true;
 
             BuildMenu();
             BuildStatusBar();
             ApplyApplicationIcon();
 
+            // 文档区域铺满菜单与状态栏之间的空间
+            _area.Dock = DockStyle.Fill;
+            Controls.Add(_area);
             Controls.Add(_menu);
             Controls.Add(_status);
             MainMenuStrip = _menu;
+
+            _area.ActiveDocumentChanged += delegate { OnActiveDocumentChanged(); };
+            _area.DocumentsChanged += delegate { UpdateParentTitle(); };
         }
 
         /// <summary>供自检使用：菜单栏。</summary>
@@ -120,7 +116,10 @@ namespace GraphEditor
         public CanvasControl CanvasArea { get { return _canvas; } }
 
         /// <summary>供自检使用：当前活动的文档窗口。</summary>
-        public Form ActiveDocumentWindow { get { return ActiveDocument; } }
+        public DocumentView ActiveDocumentView { get { return ActiveDocument; } }
+
+        /// <summary>供自检使用：文档区域。</summary>
+        public DocumentArea DocumentArea { get { return _area; } }
 
         private void BuildMenu()
         {
@@ -191,18 +190,68 @@ namespace GraphEditor
             _menu.Items.Add(view);
             _menu.Items.Add(properties);
 
-            // ---- 窗口（MDI 子窗口列表由 MdiWindowListItem 自动维护）----
-            ToolStripMenuItem window = new ToolStripMenuItem("窗口(&W)");
-            window.DropDownItems.Add(MenuItem("层叠(&C)", Keys.None, delegate { LayoutMdi(MdiLayout.Cascade); }));
-            window.DropDownItems.Add(MenuItem("平铺(&T)", Keys.None, delegate { LayoutMdi(MdiLayout.TileHorizontal); }));
-            window.DropDownItems.Add(new ToolStripSeparator());
-            window.DropDownItems.Add(MenuItem("关闭当前文档(&W)", Keys.None, delegate { CloseDocument(); }));
-            window.DropDownItems.Add(new ToolStripSeparator());
-            // 打开文档的列表会由 WinForms 自动追加到这个菜单末尾
-            _menu.MdiWindowListItem = window;
-
-            _menu.Items.Add(window);
+            // ---- 窗口（标签页 / 分栏 / 文档列表）----
+            _windowMenu = new ToolStripMenuItem("窗口(&W)");
+            _windowMenu.DropDownOpening += delegate { RebuildWindowMenu(); };
+            _menu.Items.Add(_windowMenu);
             _menu.Items.Add(help);
+        }
+
+        /// <summary>重建「窗口」菜单：分栏命令 + 已打开文档列表（当前文档打勾）。</summary>
+        private void RebuildWindowMenu()
+        {
+            _windowMenu.DropDownItems.Clear();
+
+            ToolStripMenuItem sideBySide = new ToolStripMenuItem("左右分栏(&V)");
+            sideBySide.Enabled = _area.DocumentCount > 1;
+            sideBySide.Click += delegate
+            {
+                DocumentView doc = ActiveDocument;
+                if (doc != null) _area.SplitWith(doc, Orientation.Vertical);
+            };
+            _windowMenu.DropDownItems.Add(sideBySide);
+
+            ToolStripMenuItem stacked = new ToolStripMenuItem("上下分栏(&H)");
+            stacked.Enabled = _area.DocumentCount > 1;
+            stacked.Click += delegate
+            {
+                DocumentView doc = ActiveDocument;
+                if (doc != null) _area.SplitWith(doc, Orientation.Horizontal);
+            };
+            _windowMenu.DropDownItems.Add(stacked);
+
+            ToolStripMenuItem merge = new ToolStripMenuItem("合并为单栏(&M)");
+            merge.Enabled = _area.IsSplit;
+            merge.Click += delegate { _area.MergeToSinglePane(); };
+            _windowMenu.DropDownItems.Add(merge);
+
+            _windowMenu.DropDownItems.Add(new ToolStripSeparator());
+            ToolStripMenuItem close = new ToolStripMenuItem("关闭当前文档(&W)");
+            close.ShortcutKeyDisplayString = "Ctrl+W";
+            close.Enabled = _area.DocumentCount > 0;
+            close.Click += delegate { CloseDocument(); };
+            _windowMenu.DropDownItems.Add(close);
+
+            ToolStripMenuItem next = new ToolStripMenuItem("下一个文档(&N)");
+            next.Click += delegate { _area.ActivateNext(true); };
+            _windowMenu.DropDownItems.Add(next);
+            ToolStripMenuItem prev = new ToolStripMenuItem("上一个文档(&P)");
+            prev.Click += delegate { _area.ActivateNext(false); };
+            _windowMenu.DropDownItems.Add(prev);
+
+            if (_area.DocumentCount > 0)
+            {
+                _windowMenu.DropDownItems.Add(new ToolStripSeparator());
+                DocumentView active = ActiveDocument;
+                foreach (DocumentView doc in _area.AllDocuments)
+                {
+                    ToolStripMenuItem item = new ToolStripMenuItem(doc.DocumentName);
+                    item.Checked = (doc == active);
+                    DocumentView captured = doc;
+                    item.Click += delegate { _area.Activate(captured); };
+                    _windowMenu.DropDownItems.Add(item);
+                }
+            }
         }
 
         private static ToolStripMenuItem MenuItem(string text, Keys shortcut, EventHandler handler)
@@ -407,7 +456,18 @@ namespace GraphEditor
             directed.Click += delegate
             {
                 c.Directed = !c.Directed;
-                SetHint(c.Directed ? "已开启有向图：边在终点显示箭头" : "已关闭有向图：隐藏箭头（边保留）");
+                if (!c.Directed)
+                {
+                    // 变成无向之后 A→B 与 B→A 就是同一条边；单重图下要删掉多余的那条
+                    int removed = c.MultiGraph ? 0 : c.RemoveExtraEdges();
+                    SetHint(removed > 0
+                        ? "已关闭有向图：隐藏箭头，并删除了 " + removed + " 条重复的边（A→B 与 B→A 合并为一条）"
+                        : "已关闭有向图：隐藏箭头（边保留）");
+                }
+                else
+                {
+                    SetHint("已开启有向图：边在终点显示箭头");
+                }
                 MarkDirty();
                 _canvas.Invalidate();
                 _canvas.RefreshScrollRange();
@@ -604,7 +664,7 @@ namespace GraphEditor
             }
             _statusRight.Text = DescribeSelection() + "    缩放 "
                 + (_canvas.Zoom * 100).ToString("0", CultureInfo.InvariantCulture) + "%"
-                + "    文档 " + MdiChildren.Length;
+                + "    文档 " + _area.DocumentCount;
         }
 
         // ================= 文档（MDI） =================
@@ -613,12 +673,9 @@ namespace GraphEditor
         /// 新建一个文档子窗口。打开文件也走这里 —— 每个文档一个窗口，
         /// 互不影响（各自持有自己的工作区、路径与修改状态）。
         /// </summary>
-        private DocumentForm CreateDocument()
+        private DocumentView CreateDocument()
         {
-            DocumentForm doc = new DocumentForm(_diagnosticMode);
-            doc.MdiParent = this;
-            doc.StateChanged += delegate { OnDocumentStateChanged(doc); };
-            doc.FormClosed += delegate { OnDocumentClosed(doc); };
+            DocumentView doc = new DocumentView(_diagnosticMode);
             doc.CanvasArea.SelectionChanged += delegate { if (doc == ActiveDocument) UpdateSelectionUi(); };
             doc.CanvasArea.ZoomChanged += delegate { if (doc == ActiveDocument) UpdateStatusRight(); };
             doc.CanvasArea.HintTextChanged += delegate(object sender, HintTextEventArgs e)
@@ -630,7 +687,7 @@ namespace GraphEditor
                 HandleDocumentKey(e);
             };
             doc.NewBlank();
-            doc.Show();
+            _area.AddDocument(doc);
             return doc;
         }
 
@@ -651,7 +708,7 @@ namespace GraphEditor
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    DocumentForm doc = CreateDocument();
+                    DocumentView doc = CreateDocument();
                     doc.LoadFile(dialog.FileName);
                     SetHint("已打开 " + Path.GetFileName(dialog.FileName)
                         + "（顶点 " + doc.Canvas.Vertices.Count + "，边 " + doc.Canvas.Edges.Count + "）。");
@@ -668,13 +725,13 @@ namespace GraphEditor
         /// <summary>关闭当前文档（会先询问保存）。</summary>
         private void CloseDocument()
         {
-            DocumentForm doc = ActiveDocument;
-            if (doc != null) doc.Close();
+            DocumentView doc = ActiveDocument;
+            if (doc != null) _area.CloseDocument(doc);
         }
 
         private bool SaveDocument(bool forceAskPath)
         {
-            DocumentForm doc = ActiveDocument;
+            DocumentView doc = ActiveDocument;
             if (doc == null) return false;
             try
             {
@@ -692,7 +749,7 @@ namespace GraphEditor
 
         private void ExportSvg()
         {
-            DocumentForm doc = ActiveDocument;
+            DocumentView doc = ActiveDocument;
             if (doc == null) return;
             try
             {
@@ -711,7 +768,7 @@ namespace GraphEditor
         }
 
         /// <summary>子窗口标题/修改状态变化时刷新父窗口标题与状态栏。</summary>
-        private void OnDocumentStateChanged(DocumentForm doc)
+        private void OnDocumentStateChanged(DocumentView doc)
         {
             if (doc == ActiveDocument)
             {
@@ -720,32 +777,22 @@ namespace GraphEditor
             }
         }
 
-        private void OnDocumentClosed(DocumentForm doc)
+        /// <summary>切换活动文档（标签切换 / 分栏后）时刷新标题、菜单与状态栏。</summary>
+        private void OnActiveDocumentChanged()
         {
-            if (MdiChildren.Length == 0)
-            {
-                UpdateParentTitle();
-                UpdateSelectionUi();
-            }
-        }
-
-        /// <summary>切换活动文档时刷新标题与菜单可用性。</summary>
-        protected override void OnMdiChildActivate(EventArgs e)
-        {
-            base.OnMdiChildActivate(e);
             UpdateSelectionUi();
             UpdateParentTitle();
         }
 
         private void UpdateParentTitle()
         {
-            DocumentForm doc = ActiveDocument;
+            DocumentView doc = ActiveDocument;
             if (doc == null)
             {
                 Text = "GraphEditor — 图论图编辑器";
                 return;
             }
-            Text = "GraphEditor — " + doc.DocumentName + (doc.IsDirty ? " *" : "");
+            Text = "GraphEditor — " + doc.TabText;
         }
 
         private void HandleDocumentKey(KeyEventArgs e)
@@ -754,6 +801,7 @@ namespace GraphEditor
             else if (e.Control && e.KeyCode == Keys.O) { OpenDocument(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.N) { NewDocument(true); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.W) { CloseDocument(); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.Tab) { _area.ActivateNext(true); e.Handled = true; }
             else if (e.KeyCode == Keys.F12 && _diagnosticMode) { DumpStateSnapshot(); e.Handled = true; }
         }
 
@@ -762,11 +810,9 @@ namespace GraphEditor
             base.OnFormClosing(e);
             if (e.Cancel) return;
 
-            // 关闭父窗口前先逐个询问未保存的文档
-            foreach (Form child in (Form[])MdiChildren.Clone())
+            // 关闭主窗口前先逐个询问未保存的文档
+            foreach (DocumentView doc in _area.AllDocuments.ToArray())
             {
-                DocumentForm doc = child as DocumentForm;
-                if (doc == null) continue;
                 if (!doc.ConfirmDiscardChanges())
                 {
                     e.Cancel = true;
@@ -777,14 +823,14 @@ namespace GraphEditor
 
         private void MarkDirty()
         {
-            DocumentForm doc = ActiveDocument;
+            DocumentView doc = ActiveDocument;
             if (doc != null) doc.MarkDirty();
             UpdateStatusRight();
         }
 
         private void SetDirty(bool dirty)
         {
-            DocumentForm doc = ActiveDocument;
+            DocumentView doc = ActiveDocument;
             if (doc != null) doc.SetDirty(dirty);
             UpdateParentTitle();
         }
@@ -899,7 +945,7 @@ namespace GraphEditor
         {
             try
             {
-                DocumentForm doc = ActiveDocument;
+                DocumentView doc = ActiveDocument;
                 if (doc == null) doc = CreateDocument();
                 doc.LoadFile(path);
                 SetHint("已打开 " + Path.GetFileName(path)
