@@ -40,20 +40,60 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\push.ps1
 
 所以：**网络没问题，认证在这一步永远过不去**。必须由维护者在本机会话里执行推送。
 
-### 可选：让 AI 也能推（PAT）
+### 用 PAT 推送（沙箱内可用，已验证）
 
-如果希望自动化推送，可以创建一个 GitHub **fine-grained Personal Access Token**
-（只勾 `Contents: Read and write`），保存到：
+token 放好后，用「token 写进 URL」的一次性命令。**不要加 `-u`** ——
+加了会把带 token 的 URL 写进 `branch.<name>.remote`，`git remote -v` 就会显示 token。
+
+```powershell
+$tok = (Get-Content .git\github-token -Raw).Trim()
+$url = "https://x-access-token:$tok@github.com/I0me0I/GraphEditor.git"
+
+# 推送
+git -c http.sslBackend=openssl -c http.proxy=http://127.0.0.1:7890 -c credential.helper= `
+    push $url HEAD:refs/heads/main
+
+# 抓取（顺便更新本地 origin/main 跟踪引用，让 git status 准确）
+git -c http.sslBackend=openssl -c http.proxy=http://127.0.0.1:7890 -c credential.helper= `
+    fetch $url main:refs/remotes/origin/main
+```
+
+推送后检查 `.git/config` 里不应出现 `x-access-token`：
+
+```powershell
+(Get-Content .git\config -Raw) -match 'x-access-token'   # 必须是 False
+```
+
+### 推送前自查（避免把个人信息推上去）
+
+```powershell
+# 1) 提交作者应是 GitHub noreply 邮箱
+git log --format='%an <%ae>' | Sort-Object -Unique
+
+# 2) 被追踪文件里不应出现本机路径、用户名、私人邮箱
+git ls-files | ForEach-Object { Select-String -Path $_ -Pattern 'C:\\Users','D:\\Projects','@gmail','@qq\.com' }
+
+# 3) 不应有密钥类内容
+git ls-files | ForEach-Object { Select-String -Path $_ -Pattern 'github_pat_','ghp_','PRIVATE KEY' }
+```
+
+`C:\Windows\...\csc.exe` 这类系统路径可以保留，它不是个人信息。
+### 创建 PAT
+
+GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**：
+
+| 项目 | 设置 |
+| --- | --- |
+| Repository access | Only select repositories → 本仓库 |
+| Repository permissions → **Contents** | **Read and write**（唯一必需的） |
+| Metadata | Read-only（选了仓库后自动带上） |
+
+其它一律 No access。推送 `.github/workflows/*.yml` 时才需要额外的 `Workflows: Read and write`。
+
+保存到（只有一行，无引号无换行）：
 
 ```
 .git/github-token        ← 只在 .git 里，不会被提交
-```
-
-然后 AI 可以用「token 写进 URL」的方式推送（`credential.helper=` 清空，不碰凭据存储）：
-
-```
-git -c http.sslBackend=openssl -c http.proxy=http://127.0.0.1:7890 -c credential.helper= \
-    push https://x-access-token:<token>@github.com/I0me0I/GraphEditor.git main
 ```
 
 注意：
