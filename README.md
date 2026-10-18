@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.1.1-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-622%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.1.2-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-636%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -162,10 +162,12 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 
 - `文件 → 新建` / `打开` 会新开一个标签页，而不是替换当前图。
 - 每个文档有**自己的工作区、文件路径与修改状态**，互不影响（包括样式设置与图类型）。
+- 每个文档面板使用经典的**凹陷 3D 边框**（含标签页），看起来像嵌在工作区里。
 - 所有菜单（编辑、视图、属性）只作用于**当前活动标签页**。
 - **拖动标签页到窗口边缘**即可分栏：拖到左/右边 → 左右并排，拖到上/下边 → 上下分栏。
-- 拖动时鼠标会变成对应方向的分栏光标（↔ / ↕），到达可贴靠位置时**高亮预览**即将占用的区域；
-  不在边缘时显示禁止光标，按 `Esc` 可取消本次拖动。
+- 拖动时光标变成**箭头 + 文档图标**（表示正在搬动一个文档），到达可贴靠位置时**高亮预览**即将占用的那一半区域
+  （左/右/上/下各自对应正确的一半）；不能放置时显示带红色斜杠的禁止光标，按 `Esc` 可取消。
+- 把文档拖回原来的半边会**自动收拢**回单栏，不会留下空白的半块区域。
 - `窗口` 菜单提供左右分栏 / 上下分栏 / 合并为单栏，以及文档切换与关闭（`Ctrl+W`）。
 - 关闭文档或退出程序时，若有未保存修改会逐个询问。
 ## 操作方式
@@ -257,7 +259,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **622 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **636 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -271,10 +273,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 622    失败: 0
+通过: 636    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=622 failed=0
+RESULT passed=636 failed=0
 ```
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。

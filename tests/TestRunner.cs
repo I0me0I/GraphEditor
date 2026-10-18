@@ -1797,13 +1797,17 @@ namespace GraphEditor.Tests
                 Check(!form.DocumentArea.IsSplit, "合并后回到单栏");
                 CheckEqual(3, form.DocumentArea.DocumentCount, "合并后文档数量不变");
 
-                // 关键回归：单栏时标签必须直接铺满工作区（不经过 SplitContainer）
+                // 关键回归：单栏时面板必须铺满工作区（不经过 SplitContainer）
                 Control singleTabs = form.ActiveDocumentView.Parent.Parent;
-                Check(singleTabs.Parent == form.DocumentArea,
-                    "单栏时标签控件直接挂在文档区域上（不会有铺不满的空隙）");
-                CheckEqual(form.DocumentArea.Width, singleTabs.Width,
-                    "单栏时标签宽度等于工作区宽度（" + singleTabs.Width + " / "
+                Control singleFrame = singleTabs.Parent;
+                Check(singleFrame != null && singleFrame.Parent == form.DocumentArea,
+                    "单栏时面板直接挂在文档区域上（不会有铺不满的空隙）");
+                // 3D 边框每边 3px，允许少量差值，但不允许出现「一半」的空隙
+                Check(singleTabs.Width >= form.DocumentArea.Width - 12,
+                    "单栏时标签宽度铺满工作区（" + singleTabs.Width + " / "
                     + form.DocumentArea.Width + "）");
+                Check(singleTabs.Height >= form.DocumentArea.Height - 12,
+                    "单栏时标签高度铺满工作区");
 
                 // 反复切换也要保持铺满
                 form.DocumentArea.SplitWith(form.ActiveDocumentView, Orientation.Horizontal);
@@ -1811,12 +1815,21 @@ namespace GraphEditor.Tests
                 form.DocumentArea.MergeToSinglePane();
                 Check(!form.DocumentArea.IsSplit, "可以再次合并");
                 Control again = form.ActiveDocumentView.Parent.Parent;
-                CheckEqual(form.DocumentArea.Width, again.Width, "反复切换后依然铺满宽度");
+                Check(again.Width >= form.DocumentArea.Width - 12, "反复切换后依然铺满宽度");
+
+                // 拖到右半边再拖回来：不能留下空的右半栏
+                DocumentView dragged = form.ActiveDocumentView;
+                form.DocumentArea.ApplyDrop(dragged, DropPlacement.Right);
+                Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两栏");
+                form.DocumentArea.ApplyDrop(dragged, DropPlacement.Left);
+                Check(!form.DocumentArea.IsSplit, "再拖回左边 → 收拢回单栏（不留空白）");
+                Control back = dragged.Parent.Parent;
+                Check(back.Width >= form.DocumentArea.Width - 12, "拖回后仍然铺满工作区");
             }
         }
 
         /// <summary>
-        /// 拖动标签分栏时：贴靠判定（上下左右边缘）要正确，
+        /// 拖动标签分栏时：贴靠判定要区分左右上下（预览必须跟着落到对应的一半），
         /// 预览浮层能正常显示，取消拖动不抛异常。
         /// </summary>
         private static void TestDropPreviewZones()
@@ -1825,21 +1838,43 @@ namespace GraphEditor.Tests
             {
                 area.Size = new Size(600, 400);
 
-                System.Reflection.MethodInfo dropSide = typeof(DocumentArea).GetMethod("DropSide",
+                System.Reflection.MethodInfo hit = typeof(DocumentArea).GetMethod("HitDropPlacement",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                Check(dropSide != null, "找到贴靠判定方法");
+                System.Reflection.MethodInfo rect = typeof(DocumentArea).GetMethod("DropRectangle",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Check(hit != null, "找到贴靠判定方法");
+                Check(rect != null, "找到预览矩形方法");
 
-                object left = dropSide.Invoke(area, new object[] { new Point(8, 200) });
-                object right = dropSide.Invoke(area, new object[] { new Point(592, 200) });
-                object top = dropSide.Invoke(area, new object[] { new Point(300, 8) });
-                object bottom = dropSide.Invoke(area, new object[] { new Point(300, 392) });
-                object middle = dropSide.Invoke(area, new object[] { new Point(300, 200) });
+                object left = hit.Invoke(area, new object[] { new Point(8, 200) });
+                object right = hit.Invoke(area, new object[] { new Point(592, 200) });
+                object top = hit.Invoke(area, new object[] { new Point(300, 8) });
+                object bottom = hit.Invoke(area, new object[] { new Point(300, 392) });
+                object middle = hit.Invoke(area, new object[] { new Point(300, 200) });
 
-                Check(left != null && (Orientation)left == Orientation.Vertical, "拖到左边 → 左右分栏");
-                Check(right != null && (Orientation)right == Orientation.Vertical, "拖到右边 → 左右分栏");
-                Check(top != null && (Orientation)top == Orientation.Horizontal, "拖到上边 → 上下分栏");
-                Check(bottom != null && (Orientation)bottom == Orientation.Horizontal, "拖到下边 → 上下分栏");
-                Check(middle == null, "拖到中间 → 不贴靠（光标显示禁止）");
+                CheckEqual(DropPlacement.Left, (DropPlacement)left, "拖到左边 → Left");
+                CheckEqual(DropPlacement.Right, (DropPlacement)right, "拖到右边 → Right");
+                CheckEqual(DropPlacement.Top, (DropPlacement)top, "拖到上边 → Top");
+                CheckEqual(DropPlacement.Bottom, (DropPlacement)bottom, "拖到下边 → Bottom");
+                CheckEqual(DropPlacement.None, (DropPlacement)middle, "拖到中间 → None（光标显示禁止）");
+
+                // 关键回归：左/右的预览矩形必须分居两侧，不能都是左边
+                Rectangle rectLeft = (Rectangle)rect.Invoke(area, new object[] { DropPlacement.Left });
+                Rectangle rectRight = (Rectangle)rect.Invoke(area, new object[] { DropPlacement.Right });
+                Rectangle rectTop = (Rectangle)rect.Invoke(area, new object[] { DropPlacement.Top });
+                Rectangle rectBottom = (Rectangle)rect.Invoke(area, new object[] { DropPlacement.Bottom });
+
+                CheckEqual(0, rectLeft.X, "左边预览从 x=0 开始");
+                Check(rectRight.X > 0, "右边预览从中间开始（x=" + rectRight.X + "）");
+                Check(rectLeft.Right <= rectRight.X + 1,
+                    "左右预览不重叠（" + rectLeft.Right + " / " + rectRight.X + "）");
+                CheckEqual(0, rectTop.Y, "上方预览从 y=0 开始");
+                Check(rectBottom.Y > 0, "下方预览从中间开始（y=" + rectBottom.Y + "）");
+                Check(rectTop.Bottom <= rectBottom.Y + 1, "上下预览不重叠");
+
+                // 拖动光标：箭头 + 文档图标，必须能正常创建
+                Check(DragCursors.Document != null, "拖动光标创建成功");
+                Check(DragCursors.Document.Size.Width > 0, "拖动光标有有效尺寸");
+                Check(DragCursors.DocumentForbidden != null, "禁止放置光标创建成功");
 
                 Check(!area.IsDraggingTab, "初始不在拖动状态");
                 area.CancelDrag();   // 没有拖动时调用也必须安全

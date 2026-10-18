@@ -23,8 +23,10 @@ namespace GraphEditor
         {
             _diagnosticMode = diagnosticMode;
 
-            BackColor = Color.FromArgb(0x9E, 0xA3, 0xAA);
-            Padding = new Padding(4);
+            // 画布外面留 3px 用来画凹陷的 3D 边框（经典子窗口观感）
+            BackColor = SystemColors.Control;
+            Padding = new Padding(3);
+            DoubleBuffered = true;
             _canvas.Dock = DockStyle.Fill;
             Controls.Add(_canvas);
 
@@ -32,6 +34,12 @@ namespace GraphEditor
             _canvas.CanvasChanged += delegate { MarkDirty(); };
             _canvas.ZoomChanged += delegate { RaiseStateChanged(); };
             _canvas.HintTextChanged += delegate(object sender, HintTextEventArgs e) { RaiseStateChanged(); };
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            Border3D.DrawSunken(e.Graphics, ClientRectangle, BackColor);
         }
 
         public CanvasControl CanvasArea { get { return _canvas; } }
