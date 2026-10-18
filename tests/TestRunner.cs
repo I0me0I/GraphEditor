@@ -1820,19 +1820,19 @@ namespace GraphEditor.Tests
                 DocumentView dragged = form.ActiveDocumentView;
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Right);
                 Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两个面板");
-                // 关掉面板里唯一的文档 → 自动补一个「未命名N」，不会出现空白面板
+                // 关掉面板里唯一的文档：空面板被收掉（其它面板还有文档，所以不补新文档）
                 int panesBeforeClose = form.DocumentArea.PaneCount;
                 int docsBeforeClose = form.DocumentArea.DocumentCount;
                 Check(form.DocumentArea.CloseDocument(dragged), "关闭新面板里的文档");
-                CheckEqual(panesBeforeClose, form.DocumentArea.PaneCount, "面板数量不变（自动补新文档）");
-                CheckEqual(docsBeforeClose, form.DocumentArea.DocumentCount, "文档数量不变（关一个补一个）");
-                bool hasUntitled = false;
-                foreach (DocumentView each in form.DocumentArea.AllDocuments)
-                {
-                    if (each.DocumentName.StartsWith("未命名")) { hasUntitled = true; break; }
-                }
-                Check(hasUntitled, "补进来的是未命名文档");
-                form.DocumentArea.MergeToSinglePane();
+                CheckEqual(panesBeforeClose - 1, form.DocumentArea.PaneCount, "空面板被收掉，只剩一个面板");
+                CheckEqual(docsBeforeClose - 1, form.DocumentArea.DocumentCount, "文档少了一个，不额外补");
+                // 把剩下的文档全部关掉 → 整个程序没有文档时才自动补一个「未命名N」
+                List<DocumentView> rest = new List<DocumentView>(form.DocumentArea.AllDocuments);
+                foreach (DocumentView each in rest) form.DocumentArea.CloseDocument(each);
+                CheckEqual(1, form.DocumentArea.DocumentCount, "全部关完后自动补了一个文档");
+                CheckEqual(1, form.DocumentArea.PaneCount, "只剩一个面板");
+                Check(form.DocumentArea.AllDocuments[0].DocumentName.StartsWith("未命名"),
+                    "补进来的是未命名文档（实际：" + form.DocumentArea.AllDocuments[0].DocumentName + "）");
 
                 // 两级拆分：整个工作区先拆 2 份，每份可以再拆 2 份 → 最多 4 个面板
                 // （每拆一次要把一份文档移进新面板，所以先补足文档）

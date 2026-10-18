@@ -102,9 +102,10 @@ namespace GraphEditor
 
             // 标签页的拖动拆分：在标签条上按下 → 移动 → 在边缘附近松开
             tabs.MouseDown += OnTabsMouseDown;
+            tabs.MouseDown += OnTabsRightClick;
             tabs.MouseMove += OnTabsMouseMove;
             tabs.MouseUp += OnTabsMouseUp;
-            tabs.MouseUp += OnTabsRightClick;      // 右键标签 → 「关闭文档」菜单
+            // 右键松手在原生 TabControl 上不一定送达，改在 MouseDown 处理
             tabs.SelectedIndexChanged += delegate
             {
                 RaiseActiveChanged();
@@ -316,8 +317,14 @@ namespace GraphEditor
                     owner.TabPages.Remove(page);
                     if (owner.TabPages.Count == 0)
                     {
-                        // 关空了就补一个「未命名N」，而不是把面板删掉
-                        RequestNewDocumentIn(owner);
+                        Pane empty = PaneOf(owner);
+                        if (empty != null)
+                        {
+                            // 只有整个程序都没有文档时，才补一个「未命名N」；
+                            // 否则把这个空面板收掉（其它面板还有文档在）
+                            if (DocumentCount == 0) RequestNewDocumentIn(owner);
+                            else RemovePane(empty);
+                        }
                     }
                 }
                 doc.Dispose();
@@ -944,7 +951,11 @@ namespace GraphEditor
             List<DocumentView> docs = DocumentsIn(pane);
             foreach (DocumentView doc in docs) CloseDocument(doc);
 
-            if (tabs.TabPages.Count == 0) RequestNewDocumentIn(tabs);
+            // 兜底：只有整个程序都没文档时才补新文档（面板可能已经在上面被收掉了）
+            if (!tabs.IsDisposed && tabs.TabPages.Count == 0 && DocumentCount == 0)
+            {
+                RequestNewDocumentIn(tabs);
+            }
         }
 
         /// <summary>请求在指定面板里新建文档（真正的创建由主窗口完成）。</summary>
