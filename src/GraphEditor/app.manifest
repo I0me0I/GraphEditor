@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.1.1.0" name="GraphEditor.app" />
+
+  <!-- 高 DPI：PerMonitorV2 让程序在 125%/150%/200% 缩放下按实际像素渲染，
+       而不是被 Windows 位图拉伸（否则文字发虚，看起来像老程序）。
+       同时声明旧版 dpiAware，兼容 Windows 10 1703 之前的系统。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+
+  <!-- 使用 Common Controls 6（视觉样式：现代按钮/滚动条/标签），
+       否则控件会退化成 Windows 95 风格。 -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+                        version="6.0.0.0" processorArchitecture="*"
+                        publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+
+  <!-- 以当前用户权限运行，不需要管理员 -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- 声明支持的 Windows 版本：不声明的话系统会以兼容模式对待（边框、DPI 都会退化） -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <!-- Windows 8 -->
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />
+      <!-- Windows 7 -->
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />
+    </application>
+  </compatibility>
+</assembly>

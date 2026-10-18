@@ -75,6 +75,20 @@ if (Test-Path -LiteralPath $iconPath) {
     Write-Host 'note: assets\GraphEditor.ico not found; building without a custom icon'
 }
 
+# ---------- application manifest (DPI awareness / visual styles) ----------
+# Without this manifest the exe is treated as legacy: Windows bitmap-stretches it
+# on high-DPI displays and does not apply modern window chrome (rounded corners).
+$manifestPath = Join-Path $sourceDir 'app.manifest'
+$manifestArgument = @()
+if (Test-Path -LiteralPath $manifestPath) {
+    $manifestArgument = @("/win32manifest:$manifestPath")
+} else {
+    Write-Host 'note: app.manifest not found; building without DPI awareness'
+}
+
+# .NET Framework WinForms also needs the PerMonitorV2 switch in the app config
+$configPath = Join-Path $sourceDir 'GraphEditor.exe.config'
+
 # ---------- compile ----------
 # Compile to a subdirectory first, then move the exe into place. Two reasons:
 #   1. csc cannot overwrite the final exe while an antivirus/indexer still holds
@@ -96,7 +110,7 @@ $arguments = @(
     '/codepage:65001',
     '/utf8output',
     "/out:$stageExe"
-) + $iconArgument + $references + $sources
+) + $iconArgument + $manifestArgument + $references + $sources
 
 Write-Host "compiler : $compiler"
 Write-Host "output   : $exePath"
@@ -138,6 +152,12 @@ if (-not $swapped) {
     Write-Host "         The new build was written to: $fallback"
     Write-Host '         Close any running GraphEditor.exe and run this script again.'
     exit 0
+}
+
+# app.config must sit next to the exe with the same name, otherwise WinForms
+# ignores the DpiAwareness switch.
+if (Test-Path -LiteralPath $configPath) {
+    Copy-Item -LiteralPath $configPath -Destination ($exePath + ".config") -Force
 }
 
 $size = (Get-Item -LiteralPath $exePath).Length

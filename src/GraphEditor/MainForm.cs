@@ -805,6 +805,23 @@ namespace GraphEditor
             else if (e.KeyCode == Keys.F12 && _diagnosticMode) { DumpStateSnapshot(); e.Handled = true; }
         }
 
+        /// <summary>窗口句柄建立后套用 Win11 圆角与细边框。</summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            WindowChrome.Apply(this);
+        }
+
+        /// <summary>拖动标签分栏时按 Esc 取消。</summary>
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Escape && _area.IsDraggingTab)
+            {
+                _area.CancelDrag();
+                e.Handled = true;
+            }
+        }
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);

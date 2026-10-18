@@ -93,6 +93,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
                 RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
+                RunSelected(only, "TestDropPreviewZones", TestDropPreviewZones);
                 RunSelected(only, "TestDefaultsAndOppositeEdges", TestDefaultsAndOppositeEdges);
                 RunSelected(only, "TestGraphTypeOptions", TestGraphTypeOptions);
                 RunSelected(only, "TestGraphTypeMenu", TestGraphTypeMenu);
@@ -1787,11 +1788,78 @@ namespace GraphEditor.Tests
                 form.DocumentArea.SplitWith(moved, Orientation.Vertical);
                 Check(form.DocumentArea.IsSplit, "分栏后处于双栏状态");
                 CheckEqual(3, form.DocumentArea.DocumentCount, "分栏不改变文档数量");
+                Control splitTabs = moved.Parent.Parent;
+                Check(splitTabs.Parent != form.DocumentArea,
+                    "分栏时标签控件放在 SplitContainer 里");
 
                 // 合并回单栏
                 form.DocumentArea.MergeToSinglePane();
                 Check(!form.DocumentArea.IsSplit, "合并后回到单栏");
                 CheckEqual(3, form.DocumentArea.DocumentCount, "合并后文档数量不变");
+
+                // 关键回归：单栏时标签必须直接铺满工作区（不经过 SplitContainer）
+                Control singleTabs = form.ActiveDocumentView.Parent.Parent;
+                Check(singleTabs.Parent == form.DocumentArea,
+                    "单栏时标签控件直接挂在文档区域上（不会有铺不满的空隙）");
+                CheckEqual(form.DocumentArea.Width, singleTabs.Width,
+                    "单栏时标签宽度等于工作区宽度（" + singleTabs.Width + " / "
+                    + form.DocumentArea.Width + "）");
+
+                // 反复切换也要保持铺满
+                form.DocumentArea.SplitWith(form.ActiveDocumentView, Orientation.Horizontal);
+                Check(form.DocumentArea.IsSplit, "可以再次分栏（上下）");
+                form.DocumentArea.MergeToSinglePane();
+                Check(!form.DocumentArea.IsSplit, "可以再次合并");
+                Control again = form.ActiveDocumentView.Parent.Parent;
+                CheckEqual(form.DocumentArea.Width, again.Width, "反复切换后依然铺满宽度");
+            }
+        }
+
+        /// <summary>
+        /// 拖动标签分栏时：贴靠判定（上下左右边缘）要正确，
+        /// 预览浮层能正常显示，取消拖动不抛异常。
+        /// </summary>
+        private static void TestDropPreviewZones()
+        {
+            using (DocumentArea area = new DocumentArea())
+            {
+                area.Size = new Size(600, 400);
+
+                System.Reflection.MethodInfo dropSide = typeof(DocumentArea).GetMethod("DropSide",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Check(dropSide != null, "找到贴靠判定方法");
+
+                object left = dropSide.Invoke(area, new object[] { new Point(8, 200) });
+                object right = dropSide.Invoke(area, new object[] { new Point(592, 200) });
+                object top = dropSide.Invoke(area, new object[] { new Point(300, 8) });
+                object bottom = dropSide.Invoke(area, new object[] { new Point(300, 392) });
+                object middle = dropSide.Invoke(area, new object[] { new Point(300, 200) });
+
+                Check(left != null && (Orientation)left == Orientation.Vertical, "拖到左边 → 左右分栏");
+                Check(right != null && (Orientation)right == Orientation.Vertical, "拖到右边 → 左右分栏");
+                Check(top != null && (Orientation)top == Orientation.Horizontal, "拖到上边 → 上下分栏");
+                Check(bottom != null && (Orientation)bottom == Orientation.Horizontal, "拖到下边 → 上下分栏");
+                Check(middle == null, "拖到中间 → 不贴靠（光标显示禁止）");
+
+                Check(!area.IsDraggingTab, "初始不在拖动状态");
+                area.CancelDrag();   // 没有拖动时调用也必须安全
+                Check(!area.IsDraggingTab, "取消后仍不在拖动状态");
+
+                System.Reflection.MethodInfo showHint = typeof(DocumentArea).GetMethod("ShowDropHint",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.MethodInfo hideHint = typeof(DocumentArea).GetMethod("HideDropHint",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Check(showHint != null && hideHint != null, "预览浮层的显示/隐藏方法存在");
+                try
+                {
+                    showHint.Invoke(area, new object[] { new Rectangle(0, 0, 300, 400) });
+                    hideHint.Invoke(area, null);
+                    Check(true, "预览浮层可以显示并隐藏");
+                }
+                catch (System.Reflection.TargetInvocationException ex)
+                {
+                    Check(false, "预览浮层抛出异常：" + ex.InnerException.Message);
+                }
             }
         }
 

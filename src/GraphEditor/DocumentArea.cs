@@ -25,6 +25,9 @@ namespace GraphEditor
         private DocumentView _dragDocument;
         private Point _dragStartScreen;
         private bool _dragging;
+        private Orientation? _dropSide;
+        private DropHintForm _dropHint;
+        private bool _isSplit;
 
         /// <summary>活动文档变化（切换标签、关闭标签、分栏）时触发。</summary>
         public event EventHandler ActiveDocumentChanged;
@@ -36,16 +39,15 @@ namespace GraphEditor
 
             _split.Dock = DockStyle.Fill;
             _split.Orientation = Orientation.Vertical;
-            _split.Panel1Collapsed = false;
-            _split.Panel2Collapsed = true;
             _split.Panel1.Padding = new Padding(0);
             _split.Panel2.Padding = new Padding(0);
 
             ConfigureTabs(_tabsFirst);
             ConfigureTabs(_tabsSecond);
-            _split.Panel1.Controls.Add(_tabsFirst);
-            _split.Panel2.Controls.Add(_tabsSecond);
-            Controls.Add(_split);
+
+            // 单栏模式下不使用 SplitContainer：标签控件直接铺满本控件。
+            // 折叠/展开 SplitContainer 偶尔会留下「没铺满」的空隙，直接把布局切换掉更可靠。
+            EnterSingleMode();
 
             _tabsFirst.SelectedIndexChanged += delegate { RaiseActiveChanged(); };
             _tabsSecond.SelectedIndexChanged += delegate { RaiseActiveChanged(); };
@@ -63,6 +65,13 @@ namespace GraphEditor
             tabs.MouseDown += OnTabsMouseDown;
             tabs.MouseMove += OnTabsMouseMove;
             tabs.MouseUp += OnTabsMouseUp;
+
+            // 安全网：万一拖动途中失去鼠标捕获（Alt+Tab、被别的窗口抢走），
+            // 别把半透明预览层留在屏幕上。
+            tabs.MouseCaptureChanged += delegate
+            {
+                if (!tabs.Capture && _dropHint != null && _dropHint.Visible) HideDropHint();
+            };
         }
 
         private void RaiseActiveChanged()
@@ -82,11 +91,11 @@ namespace GraphEditor
         {
             get
             {
-                if (!_split.Panel2Collapsed && _tabsSecond.ContainsFocus) return _tabsSecond;
+                if (_isSplit && _tabsSecond.ContainsFocus) return _tabsSecond;
                 if (_tabsFirst.ContainsFocus) return _tabsFirst;
                 // 没有焦点时：哪个面板有选中项就用哪个，最后退回第一个
                 if (_tabsFirst.SelectedTab != null) return _tabsFirst;
-                if (!_split.Panel2Collapsed && _tabsSecond.SelectedTab != null) return _tabsSecond;
+                if (_isSplit && _tabsSecond.SelectedTab != null) return _tabsSecond;
                 return _tabsFirst;
             }
         }
@@ -108,7 +117,7 @@ namespace GraphEditor
             {
                 List<DocumentView> docs = new List<DocumentView>();
                 CollectDocuments(_tabsFirst, docs);
-                if (!_split.Panel2Collapsed) CollectDocuments(_tabsSecond, docs);
+                if (_isSplit) CollectDocuments(_tabsSecond, docs);
                 return docs;
             }
         }
@@ -130,13 +139,14 @@ namespace GraphEditor
         /// <summary>是否处于分栏状态（两个面板）。</summary>
         public bool IsSplit
         {
-            get { return !_split.Panel2Collapsed; }
+            get { return _isSplit; }
         }
 
         /// <summary>把文档加为活动面板的一个标签页并选中。</summary>
         public void AddDocument(DocumentView doc)
         {
             AddTo(ActiveTabs, doc);
+            RelayoutPanes();
             RaiseDocumentsChanged();
             RaiseActiveChanged();
         }
@@ -174,18 +184,15 @@ namespace GraphEditor
                 if (owner != null)
                 {
                     owner.TabPages.Remove(page);
-                    // 整个面板空了就收拢分栏
-                    if (owner.TabPages.Count == 0 && IsSplit)
+                    // 某个面板空了就收拢回单栏
+                    if (owner.TabPages.Count == 0 && _isSplit)
                     {
-                        if (owner == _tabsSecond || _tabsFirst.TabPages.Count == 0)
-                        {
-                            _split.Panel2Collapsed = true;
-                            _split.Orientation = Orientation.Vertical;
-                        }
+                        MergeToSinglePane();
                     }
                 }
                 doc.Dispose();
             }
+            RelayoutPanes();
             RaiseDocumentsChanged();
             RaiseActiveChanged();
             return true;
@@ -198,39 +205,31 @@ namespace GraphEditor
         public void SplitWith(DocumentView doc, Orientation orientation)
         {
             if (doc == null) return;
-            if (IsSplit)
+
+            TabPage page = doc.Tag as TabPage;
+            if (page == null) return;
+            TabControl owner = page.Parent as TabControl;
+            if (owner == null) return;
+
+            if (_isSplit)
             {
-                // 已经分栏：只是把文档挪到另一个面板
-                TabPage page = doc.Tag as TabPage;
-                if (page == null) return;
-                TabControl owner = page.Parent as TabControl;
+                // 已经分栏：把文档挪到另一个面板
                 TabControl target = owner == _tabsFirst ? _tabsSecond : _tabsFirst;
                 if (owner == target) return;
-                owner.TabPages.Remove(page);
-                page.Controls.Remove(doc);
-                target.TabPages.Add(page);
-                page.Controls.Add(doc);
-                target.SelectedTab = page;
+                MovePage(page, doc, target);
                 _split.Orientation = orientation;
-                RaiseDocumentsChanged();
-                RaiseActiveChanged();
-                return;
+                _split.SplitterDistance = SafeSplitterDistance(orientation);
+                target.SelectedTab = page;
+            }
+            else
+            {
+                // 尚未分栏：先把文档挪到第二个标签控件，再切换到双栏布局
+                MovePage(page, doc, _tabsSecond);
+                EnterSplitMode(orientation);
+                _tabsSecond.SelectedTab = page;
             }
 
-            // 尚未分栏：把该文档挪到第二个面板，然后展开
-            TabPage first = doc.Tag as TabPage;
-            if (first == null) return;
-            _tabsFirst.TabPages.Remove(first);
-            first.Controls.Remove(doc);
-            _tabsSecond.TabPages.Add(first);
-            first.Controls.Add(doc);
-            _tabsSecond.SelectedTab = first;
-
-            _split.Orientation = orientation;
-            _split.Panel2Collapsed = false;
-            _split.SplitterDistance = orientation == Orientation.Vertical
-                ? _split.Width / 2
-                : _split.Height / 2;
+            RelayoutPanes();
             RaiseDocumentsChanged();
             RaiseActiveChanged();
         }
@@ -238,24 +237,99 @@ namespace GraphEditor
         /// <summary>合并回单面板：第二个面板的文档移回第一个。</summary>
         public void MergeToSinglePane()
         {
-            if (!IsSplit) return;
+            if (!_isSplit) return;
+
             List<TabPage> moving = new List<TabPage>();
             foreach (TabPage page in _tabsSecond.TabPages) moving.Add(page);
             foreach (TabPage page in moving)
             {
                 DocumentView doc = page.Tag as DocumentView;
-                _tabsSecond.TabPages.Remove(page);
-                page.Controls.Remove(doc);
-                _tabsFirst.TabPages.Add(page);
-                page.Controls.Add(doc);
+                MovePage(page, doc, _tabsFirst);
             }
-            if (_tabsFirst.TabPages.Count > 0)
-            {
-                _tabsFirst.SelectedIndex = 0;
-            }
-            _split.Panel2Collapsed = true;
+
+            EnterSingleMode();
+            if (_tabsFirst.TabPages.Count > 0) _tabsFirst.SelectedIndex = 0;
+
+            RelayoutPanes();
             RaiseDocumentsChanged();
             RaiseActiveChanged();
+        }
+
+        private static void MovePage(TabPage page, DocumentView doc, TabControl target)
+        {
+            TabControl owner = page.Parent as TabControl;
+            if (owner == target) return;
+            if (owner != null) owner.TabPages.Remove(page);
+            if (doc != null) page.Controls.Remove(doc);
+            target.TabPages.Add(page);
+            if (doc != null)
+            {
+                doc.Dock = DockStyle.Fill;
+                page.Controls.Add(doc);
+            }
+        }
+
+        /// <summary>单栏模式：标签控件直接铺满本控件，完全不经过 SplitContainer。</summary>
+        private void EnterSingleMode()
+        {
+            _isSplit = false;
+
+            if (_split.Parent != null)
+            {
+                _split.Panel1.Controls.Remove(_tabsFirst);
+                Controls.Remove(_split);
+            }
+            if (_tabsFirst.Parent != this)
+            {
+                _tabsFirst.Dock = DockStyle.Fill;
+                Controls.Add(_tabsFirst);
+            }
+            _tabsFirst.Visible = true;
+            _tabsFirst.BringToFront();
+        }
+
+        /// <summary>双栏模式：两个标签控件各占 SplitContainer 的一半。</summary>
+        private void EnterSplitMode(Orientation orientation)
+        {
+            if (_tabsFirst.Parent == this) Controls.Remove(_tabsFirst);
+
+            if (_tabsFirst.Parent != _split.Panel1)
+            {
+                _tabsFirst.Dock = DockStyle.Fill;
+                _split.Panel1.Controls.Add(_tabsFirst);
+            }
+            if (_tabsSecond.Parent != _split.Panel2)
+            {
+                _tabsSecond.Dock = DockStyle.Fill;
+                _split.Panel2.Controls.Add(_tabsSecond);
+            }
+
+            _split.Orientation = orientation;
+            _split.Panel1Collapsed = false;
+            _split.Panel2Collapsed = false;
+            _split.Dock = DockStyle.Fill;
+
+            if (_split.Parent != this)
+            {
+                Controls.Add(_split);
+                _split.BringToFront();
+            }
+
+            _isSplit = true;
+            _tabsFirst.Visible = true;
+            _tabsSecond.Visible = true;
+
+            _split.SplitterDistance = SafeSplitterDistance(orientation);
+        }
+
+        private int SafeSplitterDistance(Orientation orientation)
+        {
+            int extent = orientation == Orientation.Vertical ? _split.Width : _split.Height;
+            if (extent <= 0) extent = orientation == Orientation.Vertical ? Width : Height;
+            int half = Math.Max(1, extent / 2);
+            int min = Math.Max(1, extent / 5);
+            int max = Math.Max(min, extent - min);
+            return Math.Min(Math.Max(half, min), max);
         }
 
         /// <summary>切换到下一个 / 上一个文档。</summary>
@@ -290,8 +364,7 @@ namespace GraphEditor
             TabControl tabs = (TabControl)sender;
 
             // 只处理「按在标签条上」的情况（点标签正文不算）
-            if (tabs.GetTabRect(tabs.SelectedIndex).Contains(e.Location) == false
-                && tabs.SelectedIndex >= 0)
+            if (tabs.SelectedIndex < 0 || !tabs.GetTabRect(tabs.SelectedIndex).Contains(e.Location))
             {
                 _dragDocument = null;
                 return;
@@ -302,11 +375,16 @@ namespace GraphEditor
             _dragDocument = page.Tag as DocumentView;
             _dragStartScreen = Cursor.Position;
             _dragging = false;
+            _dropSide = null;
+            // 捕获鼠标：拖到窗口边缘（甚至出了标签条）仍能收到 Move/Up
+            tabs.Capture = true;
         }
 
         private void OnTabsMouseMove(object sender, MouseEventArgs e)
         {
             if (_dragDocument == null) return;
+            TabControl tabs = (TabControl)sender;
+
             Point now = Cursor.Position;
             if (!_dragging
                 && (Math.Abs(now.X - _dragStartScreen.X) > DragThreshold
@@ -314,23 +392,57 @@ namespace GraphEditor
             {
                 _dragging = true;
             }
+            if (!_dragging) return;
+
+            // 拖到边缘时：换光标 + 显示将要占用的范围
+            Orientation? side = DropSide(PointToClient(now));
+            _dropSide = side;
+            tabs.Cursor = side == null
+                ? Cursors.No
+                : (side == Orientation.Vertical ? Cursors.SizeWE : Cursors.SizeNS);
+
+            if (side == null) HideDropHint();
+            else ShowDropHint(DropRectangle(side.Value));
         }
 
         private void OnTabsMouseUp(object sender, MouseEventArgs e)
         {
+            TabControl tabs = (TabControl)sender;
             DocumentView doc = _dragDocument;
             bool dragged = _dragging;
+            Orientation? side = _dropSide;
+
             _dragDocument = null;
             _dragging = false;
-            if (doc == null || !dragged) return;
+            _dropSide = null;
+            tabs.Capture = false;
+            tabs.Cursor = Cursors.Default;
+            HideDropHint();
 
-            // 释放位置相对本控件：靠近哪条边就按哪个方向分栏
-            Point client = PointToClient(Cursor.Position);
-            Orientation? orientation = DropSide(client);
-            if (orientation == null) return;
-            SplitWith(doc, orientation.Value);
+            if (doc == null || !dragged || side == null) return;
+            SplitWith(doc, side.Value);
         }
 
+        /// <summary>是否正在拖动标签（用于 Esc 取消）。</summary>
+        public bool IsDraggingTab
+        {
+            get { return _dragDocument != null && _dragging; }
+        }
+
+        /// <summary>拖动过程中按 Esc 取消（不放手也能放弃本次分栏）。</summary>
+        internal void CancelDrag()
+        {
+            _dragDocument = null;
+            _dragging = false;
+            _dropSide = null;
+            _tabsFirst.Capture = false;
+            _tabsSecond.Capture = false;
+            _tabsFirst.Cursor = Cursors.Default;
+            _tabsSecond.Cursor = Cursors.Default;
+            HideDropHint();
+        }
+
+        /// <summary>拖动时鼠标所在的贴靠边（左右 → 并排；上下 → 分栏）；不在边缘返回 null。</summary>
         private Orientation? DropSide(Point client)
         {
             int left = client.X;
@@ -343,6 +455,127 @@ namespace GraphEditor
 
             if (min == left || min == right) return Orientation.Vertical;      // 左右 → 并排
             return Orientation.Horizontal;                                      // 上下 → 分栏
+        }
+
+        /// <summary>给定分栏方向时，预览应该覆盖的客户区矩形（占一半）。</summary>
+        private Rectangle DropRectangle(Orientation orientation)
+        {
+            if (orientation == Orientation.Vertical)
+            {
+                return new Rectangle(0, 0, Math.Max(1, Width / 2), Math.Max(1, Height));
+            }
+            return new Rectangle(0, 0, Math.Max(1, Width), Math.Max(1, Height / 2));
+        }
+
+        private void ShowDropHint(Rectangle clientRect)
+        {
+            if (_dropHint == null || _dropHint.IsDisposed)
+            {
+                _dropHint = new DropHintForm();
+            }
+            Rectangle screen = RectangleToScreen(clientRect);
+            if (_dropHint.Bounds != screen) _dropHint.Bounds = screen;
+            if (!_dropHint.Visible) _dropHint.Show(this);
+        }
+
+        private void HideDropHint()
+        {
+            if (_dropHint != null && !_dropHint.IsDisposed && _dropHint.Visible)
+            {
+                _dropHint.Hide();
+            }
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            // 分栏宽度跟着窗口收缩时，SplitterDistance 可能有越界风险，钳制一下
+            ClampSplitterDistance();
+        }
+
+        private void ClampSplitterDistance()
+        {
+            if (_split.Panel2Collapsed) return;
+            try
+            {
+                int extent = _split.Orientation == Orientation.Vertical ? _split.Width : _split.Height;
+                int min = Math.Max(1, extent / 5);
+                int max = Math.Max(min, extent - min);
+                int wanted = _split.SplitterDistance;
+                if (wanted < min) _split.SplitterDistance = min;
+                else if (wanted > max) _split.SplitterDistance = max;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // 极端尺寸下 SplitContainer 会拒绝，忽略即可
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        /// <summary>
+        /// 结构变化（分栏/合并/关闭标签）后强制重排一次。
+        /// 只依赖 WinForms 的自动布局偶尔会留下「标签铺不满工作区」的空隙。
+        /// </summary>
+        private void RelayoutPanes()
+        {
+            _split.PerformLayout();
+            RelayoutTabs(_tabsFirst);
+            if (!_split.Panel2Collapsed) RelayoutTabs(_tabsSecond);
+
+            foreach (DocumentView doc in AllDocuments)
+            {
+                if (doc.Dock != DockStyle.Fill) doc.Dock = DockStyle.Fill;
+                doc.PerformLayout();
+                if (doc.CanvasArea != null) doc.CanvasArea.PerformLayout();
+            }
+            PerformLayout();
+            Invalidate();
+        }
+
+        private static void RelayoutTabs(TabControl tabs)
+        {
+            tabs.PerformLayout();
+            TabPage page = tabs.SelectedTab;
+            if (page != null) page.PerformLayout();
+            tabs.Invalidate();
+        }
+
+        /// <summary>
+        /// 拖动标签时显示的范围预览：一个无边框、半透明、不抢焦点的浮层，
+        /// 盖在「松开后文档将要占据的区域」上。
+        /// </summary>
+        private sealed class DropHintForm : Form
+        {
+            public DropHintForm()
+            {
+                FormBorderStyle = FormBorderStyle.None;
+                ShowInTaskbar = false;
+                StartPosition = FormStartPosition.Manual;
+                BackColor = Color.FromArgb(0x00, 0x78, 0xD4);
+                Opacity = 0.25;
+                TopMost = true;
+                // 注意：不能设 Enabled = false，那样 Show() 会抛异常。
+                // 拖动期间标签控件持有鼠标捕获，事件不会落到这个浮层上。
+            }
+
+            protected override bool ShowWithoutActivation
+            {
+                get { return true; }
+            }
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    // 不抢焦点、不显示在 Alt+Tab
+                    cp.ExStyle |= 0x08000000;   // WS_EX_NOACTIVATE
+                    cp.ExStyle |= 0x00000080;   // WS_EX_TOOLWINDOW
+                    return cp;
+                }
+            }
         }
     }
 }
