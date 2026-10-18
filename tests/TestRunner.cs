@@ -1798,21 +1798,21 @@ namespace GraphEditor.Tests
 
                 // 关键回归：单栏时面板必须铺满工作区（不经过 SplitContainer）
                 Control singleTabs = form.ActiveDocumentView.Parent.Parent;
-                Check(singleTabs.Parent == form.DocumentArea,
-                    "单栏时标签控件直接挂在文档区域上（不会有铺不满的空隙）");
-                CheckEqual(form.DocumentArea.Width, singleTabs.Width,
-                    "单栏时标签宽度等于工作区宽度（" + singleTabs.Width + " / "
-                    + form.DocumentArea.Width + "）");
-                CheckEqual(form.DocumentArea.Height, singleTabs.Height,
-                    "单栏时标签高度等于工作区高度");
-
-                // 反复切换也要保持铺满
+                Control singleHost = singleTabs.Parent;
+                Check(singleHost != null && singleHost.Parent == form.DocumentArea,
+                    "单栏时面板容器直接挂在文档区域上（不会有铺不满的空隙）");
+                // 容器四周各留 1px 给黑色边框
+                CheckEqual(form.DocumentArea.Width, singleHost.Width,
+                    "容器宽度等于工作区宽度（" + singleHost.Width + " / " + form.DocumentArea.Width + "）");
+                CheckEqual(form.DocumentArea.Width - 2, singleTabs.Width,
+                    "标签控件占满容器内部（左右各 1px 黑边）");
+                CheckEqual(form.DocumentArea.Height, singleHost.Height, "容器高度等于工作区高度");
                 form.DocumentArea.SplitWith(form.ActiveDocumentView, Orientation.Horizontal);
                 Check(form.DocumentArea.IsSplit, "可以再次分栏（上下）");
                 form.DocumentArea.MergeToSinglePane();
                 Check(!form.DocumentArea.IsSplit, "可以再次合并");
                 Control again = form.ActiveDocumentView.Parent.Parent;
-                CheckEqual(form.DocumentArea.Width, again.Width, "反复切换后依然铺满宽度");
+                CheckEqual(form.DocumentArea.Width, again.Parent.Width, "反复切换后依然铺满宽度");
 
                 // 拖到右半边再拖回来：不能留下空的右半栏
                 DocumentView dragged = form.ActiveDocumentView;
@@ -1821,7 +1821,7 @@ namespace GraphEditor.Tests
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Left);
                 Check(!form.DocumentArea.IsSplit, "再拖回左边 → 收拢回单栏（不留空白）");
                 Control back = dragged.Parent.Parent;
-                CheckEqual(form.DocumentArea.Width, back.Width, "拖回后仍然铺满工作区");
+                CheckEqual(form.DocumentArea.Width, back.Parent.Width, "拖回后仍然铺满工作区");
             }
         }
 

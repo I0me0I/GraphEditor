@@ -25,6 +25,8 @@ namespace GraphEditor
         private readonly SplitContainer _split = new SplitContainer();
         private readonly TabControl _tabsFirst = new TabControl();
         private readonly TabControl _tabsSecond = new TabControl();
+        private readonly Panel _hostFirst = new Panel();
+        private readonly Panel _hostSecond = new Panel();
 
         /// <summary>拖动标签时，距离边缘多少像素以内算「拖到边缘要分栏」。</summary>
         private const int DropEdgeZone = 48;
@@ -58,6 +60,9 @@ namespace GraphEditor
             ConfigureTabs(_tabsFirst);
             ConfigureTabs(_tabsSecond);
 
+            ConfigureHost(_hostFirst, _tabsFirst);
+            ConfigureHost(_hostSecond, _tabsSecond);
+
             // 单栏模式下不使用 SplitContainer：标签控件直接铺满本控件。
             // 折叠/展开 SplitContainer 偶尔会留下「没铺满」的空隙，直接把布局切换掉更可靠。
             EnterSingleMode();
@@ -82,6 +87,20 @@ namespace GraphEditor
             {
                 if (!tabs.Capture) HideDropHint();
             };
+        }
+
+        /// <summary>
+        /// 给每个文档面板套一层「1px 黑色边框」：黑底 + 1px 内边距，
+        /// 让标签控件四周露出一圈纯黑细边。全部由框架绘制，没有自绘代码。
+        /// （Panel.BorderStyle.FixedSingle 画的是 SystemColors.WindowFrame #646464，不是黑色。）
+        /// </summary>
+        private static void ConfigureHost(Panel host, TabControl tabs)
+        {
+            host.BackColor = Color.Black;
+            host.Padding = new Padding(1);
+            host.Dock = DockStyle.Fill;
+            tabs.Dock = DockStyle.Fill;
+            host.Controls.Add(tabs);
         }
 
         private static void FocusActiveCanvas(TabControl tabs)
@@ -278,25 +297,29 @@ namespace GraphEditor
         /// <summary>按给定顺序把两个标签控件放进 SplitContainer 的左右（上下）面板。</summary>
         private void SetPaneOrder(TabControl first, TabControl second)
         {
+            if (first == second) return;
+
+            Panel firstHost = HostFor(first);
+            Panel secondHost = HostFor(second);
+
             bool already = _split.Panel1.Controls.Count == 1
-                && _split.Panel1.Controls[0] == first
+                && _split.Panel1.Controls[0] == firstHost
                 && _split.Panel2.Controls.Count == 1
-                && _split.Panel2.Controls[0] == second;
+                && _split.Panel2.Controls[0] == secondHost;
             if (already) return;
 
-            // 先摘下来再按新顺序放回去
-            _split.Panel1.Controls.Remove(first);
-            _split.Panel1.Controls.Remove(second);
-            _split.Panel2.Controls.Remove(first);
-            _split.Panel2.Controls.Remove(second);
+            _split.Panel1.Controls.Remove(firstHost);
+            _split.Panel1.Controls.Remove(secondHost);
+            _split.Panel2.Controls.Remove(firstHost);
+            _split.Panel2.Controls.Remove(secondHost);
 
-            first.Dock = DockStyle.Fill;
-            second.Dock = DockStyle.Fill;
-            _split.Panel1.Controls.Add(first);
-            _split.Panel2.Controls.Add(second);
+            firstHost.Dock = DockStyle.Fill;
+            secondHost.Dock = DockStyle.Fill;
+            _split.Panel1.Controls.Add(firstHost);
+            _split.Panel2.Controls.Add(secondHost);
 
-            first.Visible = true;
-            second.Visible = true;
+            firstHost.Visible = true;
+            secondHost.Visible = true;
         }
 
 
@@ -350,33 +373,33 @@ namespace GraphEditor
 
             if (_split.Parent != null)
             {
-                _split.Panel1.Controls.Remove(_tabsFirst);
-                _split.Panel2.Controls.Remove(_tabsSecond);
+                _split.Panel1.Controls.Remove(_hostFirst);
+                _split.Panel2.Controls.Remove(_hostSecond);
                 Controls.Remove(_split);
             }
-            if (_tabsFirst.Parent != this)
+            if (_hostFirst.Parent != this)
             {
-                _tabsFirst.Dock = DockStyle.Fill;
-                Controls.Add(_tabsFirst);
+                _hostFirst.Dock = DockStyle.Fill;
+                Controls.Add(_hostFirst);
             }
-            _tabsFirst.Visible = true;
-            _tabsFirst.BringToFront();
+            _hostFirst.Visible = true;
+            _hostFirst.BringToFront();
         }
 
         /// <summary>双栏模式：两个标签控件各占 SplitContainer 的一半。</summary>
         private void EnterSplitMode(Orientation orientation)
         {
-            if (_tabsFirst.Parent == this) Controls.Remove(_tabsFirst);
+            if (_hostFirst.Parent == this) Controls.Remove(_hostFirst);
 
-            if (_tabsFirst.Parent != _split.Panel1)
+            if (_hostFirst.Parent != _split.Panel1)
             {
-                _tabsFirst.Dock = DockStyle.Fill;
-                _split.Panel1.Controls.Add(_tabsFirst);
+                _hostFirst.Dock = DockStyle.Fill;
+                _split.Panel1.Controls.Add(_hostFirst);
             }
-            if (_tabsSecond.Parent != _split.Panel2)
+            if (_hostSecond.Parent != _split.Panel2)
             {
-                _tabsSecond.Dock = DockStyle.Fill;
-                _split.Panel2.Controls.Add(_tabsSecond);
+                _hostSecond.Dock = DockStyle.Fill;
+                _split.Panel2.Controls.Add(_hostSecond);
             }
 
             _split.Orientation = orientation;
@@ -391,10 +414,16 @@ namespace GraphEditor
             }
 
             _isSplit = true;
-            _tabsFirst.Visible = true;
-            _tabsSecond.Visible = true;
+            _hostFirst.Visible = true;
+            _hostSecond.Visible = true;
 
             _split.SplitterDistance = SafeSplitterDistance(orientation);
+        }
+
+        /// <summary>标签控件对应的承载面板（黑底 + 1px 内边距 = 1px 黑色边框）。</summary>
+        private Panel HostFor(TabControl tabs)
+        {
+            return tabs == _tabsSecond ? _hostSecond : _hostFirst;
         }
 
         private int SafeSplitterDistance(Orientation orientation)
