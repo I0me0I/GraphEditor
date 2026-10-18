@@ -247,10 +247,14 @@ namespace GraphEditor
             get { return AllDocuments.Count; }
         }
 
-        /// <summary>面板数量（1 表示没有拆分）。</summary>
+        /// <summary>
+        /// 面板数量（1 表示没有拆分）。
+        /// 用登记表而不是树遍历：树万一出现异常，这里的计数仍然可信，
+        /// 「合并为单栏」的可用性才不会被误判成「没有拆分」。
+        /// </summary>
         public int PaneCount
         {
-            get { return OrderedPanes().Count; }
+            get { return _panes.Count; }
         }
 
         /// <summary>是否处于拆分状态（多于一个面板）。</summary>
@@ -397,6 +401,9 @@ namespace GraphEditor
             second.Dock = DockStyle.Fill;
             split.Panel1.Controls.Add(first);
             split.Panel2.Controls.Add(second);
+
+            // 双击分割条 = 合并回单栏（和菜单里的「合并为单栏」等价）
+            split.MouseDoubleClick += delegate { MergeToSinglePane(); };
 
             AttachNode(split, oldParent, oldIndex, wasRoot);
             _active = created;
@@ -590,11 +597,14 @@ namespace GraphEditor
             ApplyDrop(doc, orientation == Orientation.Vertical ? DropPlacement.Right : DropPlacement.Bottom);
         }
 
-        /// <summary>合并回单面板：所有面板的文档都并到第一个面板里。</summary>
+        /// <summary>
+        /// 合并回单面板：所有面板的文档都并到第一个面板里，然后强制重建成单栏。
+        /// 只用面板登记表、不依赖当前树的形状 —— 这样即使树结构出现过异常也能收回来。
+        /// </summary>
         public void MergeToSinglePane()
         {
-            List<Pane> panes = OrderedPanes();
-            if (panes.Count <= 1) return;
+            List<Pane> panes = new List<Pane>(_panes);
+            if (panes.Count == 0) return;
 
             Pane first = panes[0];
             for (int i = 1; i < panes.Count; i++)
@@ -608,24 +618,43 @@ namespace GraphEditor
                 }
             }
 
-            // 拆掉整棵树，只留第一个面板
-            Control oldRoot = _root;
-            _root = first.Host;
-            first.Host.Dock = DockStyle.Fill;
-            Controls.Add(first.Host);       // 会自动从旧父容器上摘下来
-            if (oldRoot != null && !ReferenceEquals(oldRoot, first.Host)) oldRoot.Dispose();
+            NormalizeSinglePane(first);
 
-            for (int i = panes.Count - 1; i >= 1; i--)
+            for (int i = 1; i < panes.Count; i++)
             {
-                _panes.Remove(panes[i]);
+                try { panes[i].Host.Dispose(); }
+                catch (Exception) { }
             }
 
+            _panes.Clear();
+            _panes.Add(first);
             _active = first;
             if (first.Tabs.TabPages.Count > 0) first.Tabs.SelectedIndex = 0;
 
             RelayoutPanes();
             RaiseDocumentsChanged();
             RaiseActiveChanged();
+        }
+
+        /// <summary>把整个文档区域重置成「只有一个面板」的样子（清掉所有拆分容器）。</summary>
+        private void NormalizeSinglePane(Pane keep)
+        {
+            Controls.Remove(keep.Host);
+
+            List<Control> old = new List<Control>();
+            foreach (Control child in Controls) old.Add(child);
+            Controls.Clear();
+
+            keep.Host.Dock = DockStyle.Fill;
+            Controls.Add(keep.Host);
+            _root = keep.Host;
+
+            foreach (Control child in old)
+            {
+                if (ReferenceEquals(child, keep.Host)) continue;
+                try { child.Dispose(); }
+                catch (Exception) { }
+            }
         }
 
         private void ApplySplitterDistance(SplitContainer split)
