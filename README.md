@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.2.1-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-632%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.3.0-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-651%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -165,7 +165,9 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - 每个面板都是**原生 `TabControl`**，边框、标签、滚动条全部由系统绘制。
 - 界面元素一律使用 WinForms 默认外观：不设置自定义颜色、不使用自绘控件、不改系统主题。
 - 所有菜单（编辑、视图、属性）只作用于**当前活动标签页**。
-- **拖动标签页到窗口边缘**即可分栏：拖到左/右边 → 左右并排，拖到上/下边 → 上下分栏。
+- **拖动标签页到面板边缘**即可拆分那个面板：拖到左/右边 → 左右并排，拖到上/下边 → 上下分栏。
+- 每个面板都能**再拆一次**，最多同时平铺 **4 个面板**（每个面板各有自己的标签页）。
+- 拖到面板**中间**则把标签移进那个面板；面板里的文档被移空/关空时会自动收掉，不会留下空白。
 - 拖动时使用**系统默认光标**，到达可贴靠位置时用系统的**可逆虚线框**（和资源管理器拖动一样）
   框出即将占用的那一半区域（左/右/上/下各自对应正确的一半）；不能放置时显示系统禁止光标，按 `Esc` 可取消。
 - 把文档拖回原来的半边会**自动收拢**回单栏，不会留下空白的半块区域。
@@ -260,7 +262,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **632 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **651 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -274,10 +276,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 632    失败: 0
+通过: 651    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=632 failed=0
+RESULT passed=651 failed=0
 ```
 
 ### 什么时候该跑测试
@@ -315,7 +317,7 @@ GraphEditor/
 │  ├─ Dialogs.cs               输入对话框、调色盘控件
 │  └─ AssemblyInfo.cs          版本信息
 ├─ tests/
-│  ├─ TestRunner.cs            632 项断言的自检程序
+│  ├─ TestRunner.cs            651 项断言的自检程序
 │  └─ run-tests.ps1            编译并运行自检
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）

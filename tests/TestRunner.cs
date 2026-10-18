@@ -1814,14 +1814,53 @@ namespace GraphEditor.Tests
                 Control again = form.ActiveDocumentView.Parent.Parent;
                 CheckEqual(form.DocumentArea.Width, again.Parent.Width, "反复切换后依然铺满宽度");
 
-                // 拖到右半边再拖回来：不能留下空的右半栏
+                // 拖到右半边 → 两个面板；面板空了要自动收掉，不留空白
                 DocumentView dragged = form.ActiveDocumentView;
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Right);
-                Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两栏");
-                form.DocumentArea.ApplyDrop(dragged, DropPlacement.Left);
-                Check(!form.DocumentArea.IsSplit, "再拖回左边 → 收拢回单栏（不留空白）");
-                Control back = dragged.Parent.Parent;
-                CheckEqual(form.DocumentArea.Width, back.Parent.Width, "拖回后仍然铺满工作区");
+                Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两个面板");
+                CheckEqual(2, form.DocumentArea.PaneCount, "面板数为 2");
+
+                Check(form.DocumentArea.CloseDocument(dragged), "关闭新面板里的文档");
+                Check(!form.DocumentArea.IsSplit, "面板空了自动收掉，回到单栏");
+                CheckEqual(1, form.DocumentArea.PaneCount, "只剩一个面板");
+                Control back = form.ActiveDocumentView.Parent.Parent;
+                CheckEqual(form.DocumentArea.Width, back.Parent.Width, "收掉后仍然铺满工作区");
+
+                // 两级拆分：面板可以再拆，最多平铺 4 个
+                // （每拆一次要把一份文档移进新面板，所以先补足文档）
+                System.Reflection.MethodInfo newDoc = typeof(MainForm).GetMethod("CreateDocument",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                while (form.DocumentArea.DocumentCount < 6) newDoc.Invoke(form, null);
+                DocumentView splitDoc = form.DocumentArea.AllDocuments[0];
+                form.DocumentArea.Activate(splitDoc);
+                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Right);
+                CheckEqual(2, form.DocumentArea.PaneCount, "第一次拆分 → 2 个面板");
+                splitDoc = form.DocumentArea.AllDocuments[0];
+                form.DocumentArea.Activate(splitDoc);
+                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Bottom);
+                CheckEqual(3, form.DocumentArea.PaneCount, "第二个面板再拆一次 → 3 个面板");
+                splitDoc = form.DocumentArea.AllDocuments[0];
+                form.DocumentArea.Activate(splitDoc);
+                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Left);
+                CheckEqual(4, form.DocumentArea.PaneCount, "再拆一次 → 4 个面板");
+                // 上限：已有 4 个面板时不再拆
+                splitDoc = form.DocumentArea.AllDocuments[0];
+                form.DocumentArea.Activate(splitDoc);
+                form.DocumentArea.ApplyDrop(splitDoc, DropPlacement.Bottom);
+                CheckEqual(4, form.DocumentArea.PaneCount, "4 个面板时不再继续拆分（上限）");
+                // 拆开后每个文档都还在，且都能激活
+                CheckEqual(6, form.DocumentArea.DocumentCount, "拆分不丢文档");
+                int all = form.DocumentArea.AllDocuments.Count;
+                foreach (DocumentView each in form.DocumentArea.AllDocuments)
+                {
+                    form.DocumentArea.Activate(each);
+                    Check(form.DocumentArea.ActiveDocument == each, "可以激活 " + each.DocumentName);
+                }
+                CheckEqual(6, all, "遍历文档数量正确");
+                form.DocumentArea.MergeToSinglePane();
+                CheckEqual(1, form.DocumentArea.PaneCount, "合并回单面板");
+                Check(!form.DocumentArea.IsSplit, "合并后不再是拆分状态");
+                CheckEqual(6, form.DocumentArea.DocumentCount, "合并后文档数不变");
             }
         }
 
