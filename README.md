@@ -131,7 +131,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 2. 双击运行（首次会有 SmartScreen 提示，见[关于数字签名](#signing)）；
 3. 无需安装，无需 .NET SDK。
 
-> 想让 `.graph` 文件双击默认用它打开：运行 `tools\register-filetype.ps1`（只写当前用户注册表，不需要管理员权限）。
+│  ├─ register-filetype.ps1    注册 / 取消 .graph 文件关联（HKCU）
+│  └─ MAINTENANCE.md           维护者手册：版本号、发布、产物管理
 
 ### 五分钟上手
 
@@ -330,11 +331,13 @@ GraphEditor/
 │  └─ run-tests.ps1            编译并运行自检
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）
-│  └─ register-filetype.ps1    注册 / 取消 .graph 文件关联（HKCU）
+│  ├─ register-filetype.ps1    注册 / 取消 .graph 文件关联（HKCU）
+│  └─ push.ps1                 维护者脚本（见 docs/MAINTENANCE.md）
 ├─ assets/GraphEditor.ico      应用图标
 ├─ docs/
 │  ├─ images/                  README 截图
-│  └─ TROUBLESHOOTING.md       详细说明：实现要点、诊断开关、排错
+│  ├─ TROUBLESHOOTING.md       详细说明：实现要点、诊断开关、排错
+│  └─ MAINTENANCE.md           维护者手册：版本号、发布、产物管理
 ├─ build.ps1                   构建脚本
 ├─ demand.md                   最初的完整需求说明
 └─ LICENSE                     MIT
