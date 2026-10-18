@@ -103,8 +103,17 @@ namespace GraphEditor
 
         public event EventHandler SelectionChanged;
         public event EventHandler CanvasChanged;
+        /// <summary>缩放比例发生变化（滚轮、菜单、程序化设置都会触发）。</summary>
+        public event EventHandler ZoomChanged;
         /// <summary>需要向状态栏推送一句提示。</summary>
         public event EventHandler<HintTextEventArgs> HintTextChanged;
+
+        /// <summary>缩放变化时通知外部（状态栏据此实时刷新）。</summary>
+        private void RaiseZoomChanged()
+        {
+            EventHandler handler = ZoomChanged;
+            if (handler != null) handler(this, EventArgs.Empty);
+        }
 
         public CanvasControl()
         {
@@ -447,6 +456,7 @@ namespace GraphEditor
         {
             _zoom = 1.0;
             CenterOnOrigin();
+            RaiseZoomChanged();
         }
 
         /// <summary>把世界原点放到客户区中心。</summary>
@@ -578,6 +588,7 @@ namespace GraphEditor
             _offsetY = 0;
             UpdateLayoutScrollbars(true);
             Invalidate();
+            RaiseZoomChanged();
         }
 
         /// <summary>直接设定缩放比例（会重新计算滚动范围），供诊断与外部控制使用。</summary>
@@ -589,6 +600,7 @@ namespace GraphEditor
             CenterView();
             UpdateLayoutScrollbars(true);
             Invalidate();
+            RaiseZoomChanged();
         }
 
         private void ZoomAt(Point deviceAnchor, double factor)
@@ -607,6 +619,7 @@ namespace GraphEditor
 
             UpdateLayoutScrollbars(true);
             Invalidate();
+            RaiseZoomChanged();
         }
 
         /// <summary>画布尺寸变化后保持视图合理。</summary>
@@ -751,6 +764,12 @@ namespace GraphEditor
         private static List<ClipboardVertex> _clipboardVertices;
         private static List<ClipboardEdge> _clipboardEdges;
 
+        /// <summary>
+        /// 连续粘贴的序号：每次粘贴递增，用于把副本依次错开。
+        /// 重新复制/剪切时归零，因此换一份内容后第一份仍落在视图中心。
+        /// </summary>
+        private int _pasteCascadeIndex;
+
         public static bool HasClipboardContent
         {
             get { return _clipboardVertices != null && _clipboardVertices.Count > 0; }
@@ -793,6 +812,8 @@ namespace GraphEditor
 
             _clipboardVertices = vertices;
             _clipboardEdges = edges;
+            // 换了一份内容：下一次粘贴重新从视图中心开始错位计数
+            _pasteCascadeIndex = 0;
             SetHintText("已复制 " + vertices.Count + " 个顶点、" + edges.Count + " 条边");
             return true;
         }
@@ -829,6 +850,21 @@ namespace GraphEditor
             return true;
         }
 
+        /// <summary>
+        /// 连续粘贴的错位步长（图像坐标）。第一份粘贴在视图中心，第 n 份再往右下
+        /// 错开 (n-1) 倍步长，避免多份副本完全重叠。
+        /// 步长取内容尺寸的 6%，并限制在合理区间内，这样大图、小图都不会叠住。
+        /// </summary>
+        private double PasteCascadeStep(double minX, double minY, double maxX, double maxY)
+        {
+            double w = Math.Max(1.0, maxX - minX);
+            double h = Math.Max(1.0, maxY - minY);
+            double span = Math.Max(w, h);
+            double step = span * 0.06;
+            if (step < 24) step = 24;
+            if (step > 120) step = 120;
+            return step;
+        }
         /// <summary>把剪贴板内容粘贴到当前图，返回新建的元素数量（顶点）。</summary>
         public int PasteClipboard()
         {
@@ -847,11 +883,19 @@ namespace GraphEditor
                 if (v.Y > maxY) maxY = v.Y;
             }
 
+            // 粘贴位置：第一份落在当前视图中心，之后每一份再往右下错开一点，
+            // 否则连续粘贴会全部叠在同一处（看起来像只粘贴了一次）。
+            //
+            // 基准点用 ClientSize 而不是 ViewportWidth：第一次粘贴后内容变大、
+            // 滚动条出现，ViewportWidth 会从 800 缩到 783；若用它算中心，每份
+            // 副本都会被往回"拽"一点点，正好把级联错位抵消掉。
+            double step = PasteCascadeStep(minX, minY, maxX, maxY);
             PointD target = ViewOrigin;
-            double targetX = target.X + ViewportWidth / _zoom / 2.0;
-            double targetY = target.Y + ViewportHeight / _zoom / 2.0;
-            double offsetX = targetX - (minX + maxX) / 2.0;
-            double offsetY = targetY - (minY + maxY) / 2.0;
+            double targetX = target.X + ClientSize.Width / (2.0 * _zoom);
+            double targetY = target.Y + ClientSize.Height / (2.0 * _zoom);
+            double offsetX = targetX - (minX + maxX) / 2.0 + step * _pasteCascadeIndex;
+            double offsetY = targetY - (minY + maxY) / 2.0 + step * _pasteCascadeIndex;
+            _pasteCascadeIndex++;
 
             Dictionary<int, int> idMap = new Dictionary<int, int>();
             List<Vertex> created = new List<Vertex>();
@@ -1212,8 +1256,10 @@ namespace GraphEditor
                         _rightPanOriginY = _offsetY;
                         Cursor = Cursors.SizeAll;
                     }
-                    _offsetX = _rightPanOriginX - (e.Location.X - _rightPanOrigin.X);
-                    _offsetY = _rightPanOriginY - (e.Location.Y - _rightPanOrigin.Y);
+                    // 光标位移是设备像素，视图原点是图像坐标，两者相差一个 zoom。
+                    // 必须除以 zoom：否则放大时画面比光标跑得快、缩小时跑得慢。
+                    _offsetX = _rightPanOriginX - (e.Location.X - _rightPanOrigin.X) / _zoom;
+                    _offsetY = _rightPanOriginY - (e.Location.Y - _rightPanOrigin.Y) / _zoom;
                     UpdateLayoutScrollbars(true);
                     Invalidate();
                 }
@@ -1772,11 +1818,21 @@ namespace GraphEditor
         public void ZoomToFit()
         {
             if (_canvas == null) return;
-            double zx = ViewportWidth / _canvas.CanvasWidth;
-            double zy = ViewportHeight / _canvas.CanvasHeight;
+            RectD? extent = ContentExtent;
+            if (extent == null)
+            {
+                // 空图没有可适应的内容，回到 100% 并居中即可
+                ResetZoom();
+                CenterOnOrigin();
+                return;
+            }
+            RectD b = extent.Value;
+            double zx = ViewportWidth / Math.Max(1.0, b.Width);
+            double zy = ViewportHeight / Math.Max(1.0, b.Height);
             _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, Math.Min(zx, zy) * 0.95));
             UpdateLayoutScrollbars(true);
-            CenterView();
+            CenterOnContent();
+            RaiseZoomChanged();
         }
 
         public void ScrollBy(int dx, int dy)

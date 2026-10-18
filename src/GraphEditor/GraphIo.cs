@@ -402,10 +402,8 @@ namespace GraphEditor
             root.Add("format", JsonValue.From(FormatId));
             root.Add("version", JsonValue.From(CurrentVersion));
 
-            JsonValue canvas = JsonValue.NewObject();
-            canvas.Add("width", JsonValue.From(c.CanvasWidth));
-            canvas.Add("height", JsonValue.From(c.CanvasHeight));
-            root.Add("canvas", canvas);
+            // 画布是无限平面，没有尺寸需要保存。早期版本写过 canvas.width/height，
+            // 读取时不使用（见 Deserialize），写入时也不再产生这两个字段。
 
             // 顶点组样式（全局）
             JsonValue vs = JsonValue.NewObject();
@@ -471,16 +469,9 @@ namespace GraphEditor
                 throw new FormatException("文件格式标识不匹配: " + format.AsString(""));
             }
 
-            double width = 1200;
-            double height = 800;
-            JsonValue canvas = root.Get("canvas");
-            if (canvas != null)
-            {
-                width = canvas.Get("width") != null ? canvas.Get("width").AsDouble(1200) : 1200;
-                height = canvas.Get("height") != null ? canvas.Get("height").AsDouble(800) : 800;
-            }
-
-            GraphCanvas c = new GraphCanvas(Clamp(width, 100, 10000), Clamp(height, 100, 10000));
+            // 画布是无限平面：不再从文件读取 canvas.width/height（旧文件里可能有，
+            // 直接忽略）。GraphCanvas 的两个尺寸字段只为兼容旧代码而保留。
+            GraphCanvas c = new GraphCanvas();
 
             JsonValue vs = root.Get("vertexStyle");
             if (vs != null)
@@ -533,7 +524,8 @@ namespace GraphEditor
                     Color parsed;
                     if (item.Get("color") != null && TryParseColor(item.Get("color").AsString(""), out parsed))
                         color = parsed;
-                    c.PlaceVertex(id, c.ClampX(x), c.ClampY(y), name, color);
+                    // 无限画布：坐标不做钳制，负坐标与超大坐标都按原样保留
+                    c.PlaceVertex(id, x, y, name, color);
                 }
             }
 

@@ -92,6 +92,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandSelection", TestRubberBandSelection);
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
+                RunSelected(only, "TestReportedRegressions", TestReportedRegressions);
                 RunSelected(only, "TestClipboard", TestClipboard);
                 RunSelected(only, "TestRotation", TestRotation);
                 RunSelected(only, "TestNamingAndPlacement", TestNamingAndPlacement);
@@ -393,8 +394,8 @@ namespace GraphEditor.Tests
             File.WriteAllText(path, text, new UTF8Encoding(false));
 
             GraphCanvas loaded = GraphIo.Deserialize(text);
-            CheckEqual(original.CanvasWidth, loaded.CanvasWidth, "往返：画布宽度");
-            CheckEqual(original.CanvasHeight, loaded.CanvasHeight, "往返：画布高度");
+            // 画布是无限平面：尺寸不再是文件的一部分（旧文件里的 canvas.width/height 被忽略）
+            Check(!text.Contains("\"canvas\""), "序列化不再写出 canvas 尺寸字段");
             CheckEqual(original.VertexRadius, loaded.VertexRadius, "往返：顶点半径");
             CheckEqual(original.VertexShape, loaded.VertexShape, "往返：顶点形状");
             CheckEqual(original.EdgeWidth, loaded.EdgeWidth, "往返：边线宽");
@@ -481,10 +482,11 @@ namespace GraphEditor.Tests
                 "{\"vertices\":[{\"id\":1,\"x\":10,\"y\":20}],\"edges\":[{\"id\":1,\"from\":1,\"to\":99}]}");
             CheckEqual(0, dangling.Edges.Count, "悬空边（端点不存在）被丢弃");
 
-            // 越界坐标被钳制
-            GraphCanvas clamped = GraphIo.Deserialize(
+            // 画布是无限平面：坐标不再被钳制到某个画布矩形内，极端坐标要原样保留
+            GraphCanvas far = GraphIo.Deserialize(
                 "{\"canvas\":{\"width\":800,\"height\":600},\"vertices\":[{\"id\":1,\"x\":99999,\"y\":-99999}]}");
-            Check(clamped.Vertices[0].X <= 800 && clamped.Vertices[0].Y >= 0, "越界坐标被钳制到画布内");
+            CheckNear(99999, far.Vertices[0].X, 0.01, "无限画布：大坐标原样保留（x）");
+            CheckNear(-99999, far.Vertices[0].Y, 0.01, "无限画布：负坐标原样保留（y）");
 
             // 非法颜色被忽略而不是抛异常
             GraphCanvas badColor = GraphIo.Deserialize(
@@ -1704,6 +1706,155 @@ namespace GraphEditor.Tests
 
 
         /// <summary>复制 / 剪切 / 粘贴：选中顶点集诱导的子图。</summary>
+        /// <summary>
+        /// 回归：用户报告的四个问题。
+        ///  1) 保存再读取后坐标不变（画布不再有尺寸，也不再钳制坐标）
+        ///  2) 缩放变化时状态栏实时刷新（滚轮路径不经过菜单）
+        ///  3) 右键平移的距离与缩放无关：光标移 N 像素，内容就在屏幕上移 N 像素
+        ///  4) 连续粘贴要依次错开，不能堆在同一处
+        /// </summary>
+        private static void TestReportedRegressions()
+        {
+            // ---- 1) 保存 → 读取：坐标必须原样保留 ----
+            GraphCanvas original = new GraphCanvas(800, 600);
+            Vertex va = original.AddVertex(100, 120, "A");
+            Vertex vb = original.AddVertex(700, 500, "B");
+            original.AddEdge(va.Id, vb.Id, "e1");
+            string text = GraphIo.Serialize(original);
+
+            Check(!text.Contains("\"canvas\""), "① 文件里不再写 canvas 尺寸");
+            GraphCanvas loaded = GraphIo.Deserialize(text);
+            CheckNear(100, loaded.Vertices[0].X, 0.01, "① 读取后 A.x 不变");
+            CheckNear(120, loaded.Vertices[0].Y, 0.01, "① 读取后 A.y 不变");
+            CheckNear(700, loaded.Vertices[1].X, 0.01, "① 读取后 B.x 不变");
+            CheckNear(500, loaded.Vertices[1].Y, 0.01, "① 读取后 B.y 不变");
+            // 内容外接矩形也不应改变（"被挤压"的直接判据）
+            RectD before = original.ContentBounds(40, 80);
+            RectD after = loaded.ContentBounds(40, 80);
+            CheckNear(before.Width, after.Width, 0.01, "① 读取后内容宽度不变");
+            CheckNear(before.Height, after.Height, 0.01, "① 读取后内容高度不变");
+            // 负坐标/超大坐标不再被钳制
+            GraphCanvas far = GraphIo.Deserialize(
+                "{\"vertices\":[{\"id\":1,\"x\":-5000,\"y\":9000}]}");
+            CheckNear(-5000, far.Vertices[0].X, 0.01, "① 负坐标原样保留");
+            CheckNear(9000, far.Vertices[0].Y, 0.01, "① 超大坐标原样保留");
+
+            // ---- 2) 状态栏随缩放实时刷新（滚轮路径） ----
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                CanvasControl canvas = form.CanvasArea;
+                canvas.Size = new Size(800, 600);
+
+                string before2 = StatusRightText(form);
+                Check(before2.IndexOf("100%", StringComparison.Ordinal) >= 0,
+                    "② 初始状态栏显示 100%（实际「" + before2 + "」）");
+
+                // 模拟滚轮：OnMouseWheel 内部就是 ZoomAt，这里直接走同一入口
+                canvas.ZoomAtPoint(new Point(400, 300), 2.0);
+                string after2 = StatusRightText(form);
+                Check(after2.IndexOf("200%", StringComparison.Ordinal) >= 0,
+                    "② 增大后状态栏立刻显示 200%（实际「" + after2 + "」）");
+
+                canvas.ZoomAtPoint(new Point(400, 300), 0.25);
+                Check(StatusRightText(form).IndexOf("50%", StringComparison.Ordinal) >= 0,
+                    "② 缩小后状态栏立刻显示 50%（实际「" + StatusRightText(form) + "」）");
+
+                canvas.ResetZoom();
+                Check(StatusRightText(form).IndexOf("100%", StringComparison.Ordinal) >= 0,
+                    "② 重置后状态栏回到 100%");
+            }
+
+            // ---- 3) 平移距离与缩放无关 ----
+            foreach (double zoomFactor in new double[] { 1.0, 2.0, 0.5 })
+            {
+                using (CanvasControl control = new CanvasControl())
+                {
+                    control.Size = new Size(800, 600);
+                    control.Canvas = new GraphCanvas(800, 600);
+                    control.CenterOnOrigin();
+                    control.ZoomAtPoint(new Point(400, 300), zoomFactor);
+                    double z = control.Zoom;
+
+                    Invoke(control, "OnMouseDown", new object[]
+                    {
+                        new MouseEventArgs(MouseButtons.Right, 1, 100, 100, 0)
+                    });
+                    control.AdvanceRightHoldClock(60);
+                    // 第一帧只定基准点
+                    Invoke(control, "OnMouseMove", new object[]
+                    {
+                        new MouseEventArgs(MouseButtons.Right, 1, 100, 100, 0)
+                    });
+                    double originBefore = control.ViewOrigin.X;
+                    // 再移动 100 设备像素
+                    Invoke(control, "OnMouseMove", new object[]
+                    {
+                        new MouseEventArgs(MouseButtons.Right, 1, 200, 100, 0)
+                    });
+                    double originAfter = control.ViewOrigin.X;
+                    Invoke(control, "OnMouseUp", new object[]
+                    {
+                        new MouseEventArgs(MouseButtons.Right, 1, 200, 100, 0)
+                    });
+
+                    // 内容在屏幕上的位移 = 原点变化 × zoom，应当恒等于 100 像素
+                    double onScreen = (originAfter - originBefore) * z;
+                    CheckNear(-100, onScreen, 1.0,
+                        "③ zoom=" + z.ToString("0.##") + " 光标移 100px → 内容屏幕位移也是 100px（实际 "
+                        + onScreen.ToString("0.#") + "）");
+                }
+            }
+
+            // ---- 4) 连续粘贴依次错开 ----
+            using (CanvasControl control = new CanvasControl())
+            {
+                control.Size = new Size(800, 600);
+                GraphCanvas c = new GraphCanvas(800, 600);
+                control.Canvas = c;
+                control.CenterOnOrigin();
+                c.AddVertex(400, 300, "P");
+                control.SelectAll();
+                control.CopySelection();
+
+                control.PasteClipboard();
+                double x1 = LastPastedX(c);
+                control.PasteClipboard();
+                double x2 = LastPastedX(c);
+                control.PasteClipboard();
+                double x3 = LastPastedX(c);
+
+                Check(x2 > x1 + 1, "④ 第 2 份副本在第 1 份右侧（" + x1.ToString("0") + " → " + x2.ToString("0") + "）");
+                Check(x3 > x2 + 1, "④ 第 3 份副本在第 2 份右侧（" + x2.ToString("0") + " → " + x3.ToString("0") + "）");
+                double stepA = x2 - x1;
+                double stepB = x3 - x2;
+                CheckNear(stepA, stepB, 0.6, "④ 相邻副本的错开距离一致（" + stepA.ToString("0.#")
+                    + " vs " + stepB.ToString("0.#") + "）");
+
+                // 重新复制后，错位计数要归零：新的一份仍落在视图中心附近
+                control.SelectAll();
+                control.CopySelection();
+                control.PasteClipboard();
+                double xFresh = LastPastedX(c);
+                Check(xFresh < x3, "④ 重新复制后的第一份不再继续累加偏移（" + xFresh.ToString("0") + " < " + x3.ToString("0") + "）");
+            }
+        }
+
+        /// <summary>读到状态栏右侧文本（缩放显示就写在这里）。</summary>
+        private static string StatusRightText(MainForm form)
+        {
+            System.Reflection.FieldInfo field = typeof(MainForm).GetField("_statusRight",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            object label = field.GetValue(form);
+            return (string)label.GetType().GetProperty("Text").GetValue(label, null);
+        }
+
+        /// <summary>取最后创建的顶点（即刚粘贴出来的那份）的 x。</summary>
+        private static double LastPastedX(GraphCanvas c)
+        {
+            return c.Vertices[c.Vertices.Count - 1].X;
+        }
+
         private static void TestClipboard()
         {
             using (CanvasControl control = new CanvasControl())

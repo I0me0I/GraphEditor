@@ -170,6 +170,15 @@ namespace GraphEditor
         private int _nextVertexId = 1;
         private int _nextEdgeId = 1;
 
+        /// <summary>
+        /// 画布是无限平面，本身没有尺寸。两个尺寸字段只为兼容旧代码/旧文件而保留，
+        /// 不再参与绘制或命名计算 —— 新建时统一取这个占位值。
+        /// </summary>
+        public GraphCanvas()
+            : this(1200, 800)
+        {
+        }
+
         public GraphCanvas(double width, double height)
         {
             CanvasWidth = width <= 0 ? 1200 : width;

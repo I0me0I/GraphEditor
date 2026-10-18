@@ -278,8 +278,8 @@ GraphEditor/
 
 ```jsonc
 {
-  "version": 1,
-  "canvas": { "width": 800, "height": 600 },   // 历史字段，加载时忽略（画布是无限平面）
+  "format": "GraphEditor.Graph",
+  "version": "1.0",
   "vertexStyle": {
     "radius": 18,
     "shape": "circle",                          // circle | square
@@ -304,7 +304,9 @@ GraphEditor/
 ```
 
 - `color` 为 `null` 表示跟随全局默认色。
-- 坐标是**图像坐标**：原点 `(0,0)`，`x` 向右、`y` 向下，可以为负。
+- 坐标是**图像坐标**：原点 `(0,0)`，`x` 向右、`y` 向下。因为画布是无限平面，
+  坐标可以是负数、也可以很大；加载时**不会**被钳制到任何矩形内。
+- 文件里**没有**画布尺寸字段。早期版本写过 `canvas.width/height`，现在读取时直接忽略。
 - 加载时容错：悬空边丢弃、非法颜色忽略、缺失字段用默认值补齐。
 
 <a id="faq"></a>

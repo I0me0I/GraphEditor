@@ -76,12 +76,16 @@ if (Test-Path -LiteralPath $iconPath) {
 }
 
 # ---------- compile ----------
-# Compile to a temp file, then swap it into place. csc cannot overwrite the final
-# exe while an antivirus/indexer still holds a handle on it (CS0016) - and that
-# happens often right after a previous build wrote it. Swapping by rename avoids
-# the conflict, and keeps a working exe if compilation fails.
-$tempExe = Join-Path $OutDir 'GraphEditor.build.tmp.exe'
-Remove-Item -LiteralPath $tempExe -Force -ErrorAction SilentlyContinue
+# Compile to a subdirectory first, then move the exe into place. Two reasons:
+#   1. csc cannot overwrite the final exe while an antivirus/indexer still holds
+#      a handle on it (CS0016), which happens often right after a previous build.
+#   2. The assembly identity is derived from the *file name*, so the temp output
+#      must also be called GraphEditor.exe - hence a subdirectory rather than a
+#      suffixed file name (that would yield assembly "GraphEditor.build.tmp").
+$stageDir = Join-Path $OutDir '.stage'
+New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+$stageExe = Join-Path $stageDir 'GraphEditor.exe'
+Remove-Item -LiteralPath $stageExe -Force -ErrorAction SilentlyContinue
 
 $arguments = @(
     '/nologo',
@@ -91,7 +95,7 @@ $arguments = @(
     '/warn:4',
     '/codepage:65001',
     '/utf8output',
-    "/out:$tempExe"
+    "/out:$stageExe"
 ) + $iconArgument + $references + $sources
 
 Write-Host "compiler : $compiler"
@@ -101,14 +105,14 @@ Write-Host ''
 
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) {
-    Remove-Item -LiteralPath $tempExe -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stageExe -Force -ErrorAction SilentlyContinue
     throw "Compilation failed (csc exit code $LASTEXITCODE)."
 }
 
-# Swap the freshly built exe into place. A scanner (Windows Defender on-access
+# Move the freshly built exe into place. A scanner (Windows Defender on-access
 # scan) often keeps a handle on the previous exe for a while: that handle allows
 # renaming but forbids overwriting, which makes csc fail with CS0016 if we build
-# straight to the final name. Hence: build to a temp name, then delete + rename,
+# straight to the final name. Hence: build into .stage\, then delete + move,
 # retrying for a few seconds.
 $swapped = $false
 for ($attempt = 1; $attempt -le 15 -and -not $swapped; $attempt++) {
@@ -116,7 +120,7 @@ for ($attempt = 1; $attempt -le 15 -and -not $swapped; $attempt++) {
         if (Test-Path -LiteralPath $exePath) {
             Remove-Item -LiteralPath $exePath -Force -ErrorAction Stop
         }
-        Move-Item -LiteralPath $tempExe -Destination $exePath -ErrorAction Stop
+        Move-Item -LiteralPath $stageExe -Destination $exePath -ErrorAction Stop
         $swapped = $true
     } catch {
         Start-Sleep -Milliseconds 400
@@ -124,10 +128,10 @@ for ($attempt = 1; $attempt -le 15 -and -not $swapped; $attempt++) {
 }
 
 if (-not $swapped) {
-    # Never leave the user with no exe at all: keep the temp file as the new name.
+    # Never leave the user with no exe at all: keep the staged file as the new name.
     $fallback = Join-Path $OutDir 'GraphEditor.new.exe'
     Remove-Item -LiteralPath $fallback -Force -ErrorAction SilentlyContinue
-    Move-Item -LiteralPath $tempExe -Destination $fallback -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $stageExe -Destination $fallback -Force -ErrorAction SilentlyContinue
     Write-Host ''
     Write-Host 'WARNING: the existing GraphEditor.exe is locked by another process'
     Write-Host '         (usually an antivirus scan of the previous build).'

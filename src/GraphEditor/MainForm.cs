@@ -98,6 +98,8 @@ namespace GraphEditor
 
             _canvas.SelectionChanged += delegate { UpdateSelectionUi(); };
             _canvas.CanvasChanged += delegate { MarkDirty(); };
+            // 缩放可能是滚轮触发的，不一定经过菜单，所以状态栏必须订阅这个事件
+            _canvas.ZoomChanged += delegate { UpdateStatusRight(); };
             _canvas.HintTextChanged += delegate(object sender, HintTextEventArgs e)
             {
                 SetHint(e.Text);
