@@ -10,7 +10,7 @@
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
 [![Version](https://img.shields.io/badge/version-1.2.1-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-639%20checks-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-632%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -260,7 +260,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **639 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **632 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -274,11 +274,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 639    失败: 0
+通过: 632    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=639 failed=0
+RESULT passed=632 failed=0
 ```
+
+### 什么时候该跑测试
+
+改动规模决定测试成本，不做无谓重复：
+
+| 改动性质 | 构建 | 跑测试 | 新增断言 |
+| --- | --- | --- | --- |
+| 视觉微调（颜色 / 间距 / 字号 / 边框样式） | ✅ | ❌ 截图确认即可 | ❌ |
+| 注释、文档、文案 | ❌ | ❌ | ❌ |
+| Bug 修复 | ✅ | ✅ | 视情况（复发风险高才加） |
+| 功能添加 / 行为变更 | ✅ | ✅ | ✅ |
+| 小版本 / 大版本发布 | ✅ | ✅ 全量 | — |
+
+不要把颜色、坐标这类**实现细节**写进断言 —— 这类测试会在合法的视觉调整时误报，反而碍事。
+要防复发，优先在代码里写清「为什么不能这么写」。
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。
 
@@ -300,7 +315,7 @@ GraphEditor/
 │  ├─ Dialogs.cs               输入对话框、调色盘控件
 │  └─ AssemblyInfo.cs          版本信息
 ├─ tests/
-│  ├─ TestRunner.cs            501 项断言的自检程序
+│  ├─ TestRunner.cs            632 项断言的自检程序
 │  └─ run-tests.ps1            编译并运行自检
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）
