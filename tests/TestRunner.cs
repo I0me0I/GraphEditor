@@ -92,6 +92,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandSelection", TestRubberBandSelection);
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
+                RunSelected(only, "TestMenusAndDefaultColor", TestMenusAndDefaultColor);
                 RunSelected(only, "TestReportedRegressions", TestReportedRegressions);
                 RunSelected(only, "TestClipboard", TestClipboard);
                 RunSelected(only, "TestRotation", TestRotation);
@@ -1015,8 +1016,8 @@ namespace GraphEditor.Tests
                 if (properties == null) return;
 
                 form.RefreshPropertyMenu();
-                Check(properties.DropDownItems.Count >= 3, "属性菜单包含 顶点属性/边属性/画布（实际 "
-                    + properties.DropDownItems.Count + " 项）");
+                CheckEqual(2, properties.DropDownItems.Count,
+                    "属性菜单只有 顶点属性 / 边属性（画布已移除）");
 
                 ToolStripMenuItem vertex = FindSubMenu(properties, "顶点属性");
                 ToolStripMenuItem edge = FindSubMenu(properties, "边属性");
@@ -1034,7 +1035,7 @@ namespace GraphEditor.Tests
                 Check(FindSubMenu(edge, "线型") != null, "边属性含线型");
                 Check(FindSubMenu(edge, "默认命名") != null, "边属性含默认命名规则");
                 Check(FindSubMenu(edge, "名字位置") != null, "边属性含名字显示位置");
-                Check(FindSubMenu(properties, "画布") != null, "属性菜单含画布尺寸信息");
+                Check(FindSubMenu(properties, "画布") == null, "属性菜单不再含「画布」");
 
                 // ---- 命名规则：选项齐全且能真正作用于画布 ----
                 ToolStripMenuItem vertexNaming = FindSubMenu(vertex, "默认命名");
@@ -1705,7 +1706,126 @@ namespace GraphEditor.Tests
         }
 
 
-        /// <summary>复制 / 剪切 / 粘贴：选中顶点集诱导的子图。</summary>
+        /// <summary>
+        /// 右键菜单与属性菜单的结构：
+        ///  1) 有选中元素时右击空白处，「粘贴」只出现一次
+        ///  2) 属性菜单不再有「画布」
+        ///  3) 颜色子菜单有「默认颜色」且能把单独着色清掉
+        /// </summary>
+        private static void TestMenusAndDefaultColor()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                CanvasControl canvas = form.CanvasArea;
+                canvas.Size = new Size(800, 600);
+                GraphCanvas c = canvas.Canvas;
+
+                Vertex a = c.AddVertex(canvas.WorldToImage(-120, 0).X, canvas.WorldToImage(-120, 0).Y, "A");
+                Vertex b = c.AddVertex(canvas.WorldToImage(120, 0).X, canvas.WorldToImage(120, 0).Y, "B");
+                Edge edge = c.AddEdge(a.Id, b.Id, "e1");
+                canvas.SelectAll();
+                canvas.CopySelection();
+
+                // ---- 1) 空白处右键：粘贴只能有一个 ----
+                // 用世界坐标挑一个确实空白的点：顶点在 (±120, 0)，这里取右下角远处
+                Point blank = canvas.DevicePointFromWorld(250, 200);
+                Check(HitNothing(canvas, blank), "选定的点是空白处（不压在顶点/边上）");
+                using (ContextMenuStrip menu = canvas.BuildContextMenu(blank))
+                {
+                    CheckEqual(1, CountItemsStartingWith(menu, "粘贴"),
+                        "① 有选中元素时，空白处右键菜单里「粘贴」只出现一次");
+                    Check(FindMenuItem(menu, "新建顶点") != null, "① 空白处右键菜单含「新建顶点」");
+                    Check(FindMenuItem(menu, "全选") == null, "① 有选中元素时不再显示「全选」");
+                }
+
+                // 没有选中时，粘贴依然要在
+                canvas.ClearSelection();
+                using (ContextMenuStrip menu = canvas.BuildContextMenu(blank))
+                {
+                    CheckEqual(1, CountItemsStartingWith(menu, "粘贴"), "① 无选中元素时「粘贴」也只有一个");
+                    Check(FindMenuItem(menu, "全选") != null, "① 无选中时显示「全选」");
+                }
+
+                // ---- 2) 属性菜单不含「画布」 ----
+                ToolStripMenuItem properties = new ToolStripMenuItem("属性");
+                typeof(MainForm).GetMethod("RebuildPropertyMenu",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .Invoke(form, new object[] { properties });
+                Check(FindMenuItem(properties, "顶点属性") != null, "② 属性菜单含「顶点属性」");
+                Check(FindMenuItem(properties, "边属性") != null, "② 属性菜单含「边属性」");
+                Check(FindMenuItem(properties, "画布") == null, "② 属性菜单已移除「画布」");
+
+                // ---- 3) 颜色子菜单里的「默认颜色」 ----
+                canvas.SelectAll();
+                canvas.ApplyColorToSelection(Color.FromArgb(0xFF, 0x00, 0x00));
+                Check(c.Vertices[0].Color != null && c.Edges[0].Color != null, "③ 预设：元素已被单独着色");
+
+                using (ContextMenuStrip menu = canvas.BuildContextMenu(blank))
+                {
+                    ToolStripMenuItem colorMenu = FindMenuItem(menu, "颜色");
+                    Check(colorMenu != null, "③ 右键菜单含「颜色」");
+                    ToolStripItem last = colorMenu.DropDownItems[colorMenu.DropDownItems.Count - 1];
+                    Check(last is ToolStripMenuItem, "③ 颜色子菜单最后一项是按钮（不是分隔线）");
+                    Check(last.Text != null && last.Text.StartsWith("默认颜色", StringComparison.Ordinal),
+                        "③ 颜色子菜单最后一项是「默认颜色」（实际「" + (last == null ? "" : last.Text) + "」）");
+
+                    last.PerformClick();
+                }
+                Check(c.Vertices[0].Color == null, "③ 点「默认颜色」后顶点回到跟随默认");
+                Check(c.Edges[0].Color == null, "③ 点「默认颜色」后边回到跟随默认");
+                CheckEqual(c.DefaultVertexColor.ToArgb(), c.EffectiveColor(c.Vertices[0]).ToArgb(),
+                    "③ 顶点实际颜色等于全局默认色");
+                CheckEqual(c.DefaultEdgeColor.ToArgb(), c.EffectiveColor(c.Edges[0]).ToArgb(),
+                    "③ 边实际颜色等于全局默认色");
+            }
+        }
+
+        /// <summary>统计菜单顶层文本以 prefix 开头的项数。</summary>
+        private static int CountItemsStartingWith(ContextMenuStrip menu, string prefix)
+        {
+            int n = 0;
+            foreach (ToolStripItem item in menu.Items)
+            {
+                if (item.Text != null && item.Text.StartsWith(prefix, StringComparison.Ordinal)) n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// 该工作区坐标点是否既不压顶点也不压边。
+        /// 判据用「新建顶点」：只有空白处的菜单才有它（顶点/边菜单第一项是「重命名」）。
+        /// </summary>
+        private static bool HitNothing(CanvasControl canvas, Point device)
+        {
+            using (ContextMenuStrip menu = canvas.BuildContextMenu(device))
+            {
+                return FindMenuItem(menu, "新建顶点") != null;
+            }
+        }
+
+        /// <summary>在右键菜单顶层按前缀查找。</summary>
+        private static ToolStripMenuItem FindMenuItem(ContextMenuStrip menu, string prefix)
+        {
+            foreach (ToolStripItem item in menu.Items)
+            {
+                ToolStripMenuItem mi = item as ToolStripMenuItem;
+                if (mi != null && mi.Text != null && mi.Text.StartsWith(prefix, StringComparison.Ordinal)) return mi;
+            }
+            return null;
+        }
+
+        /// <summary>在某个菜单项的子菜单里按前缀查找。</summary>
+        private static ToolStripMenuItem FindMenuItem(ToolStripMenuItem parent, string prefix)
+        {
+            foreach (ToolStripItem item in parent.DropDownItems)
+            {
+                ToolStripMenuItem mi = item as ToolStripMenuItem;
+                if (mi != null && mi.Text != null && mi.Text.StartsWith(prefix, StringComparison.Ordinal)) return mi;
+            }
+            return null;
+        }
+
         /// <summary>
         /// 回归：用户报告的四个问题。
         ///  1) 保存再读取后坐标不变（画布不再有尺寸，也不再钳制坐标）

@@ -1517,6 +1517,15 @@ namespace GraphEditor
         private void ShowContextMenu(Point device)
         {
             _lastContextMenuAt = device;
+            ContextMenuStrip menu = BuildContextMenu(device);
+            menu.Show(this, device);
+        }
+
+        /// <summary>
+        /// 按给定位置应当显示的右键菜单（不弹出）。抽成独立方法便于自检菜单结构。
+        /// </summary>
+        internal ContextMenuStrip BuildContextMenu(Point device)
+        {
             PointF img = DeviceToImage(device);
             Vertex vertex = HitTestVertex(img);
             Edge edge = vertex == null ? HitTestEdge(img) : null;
@@ -1581,15 +1590,11 @@ namespace GraphEditor
                 };
                 menu.Items.Add(create);
 
-                ToolStripMenuItem paste = new ToolStripMenuItem("粘贴(&P)");
-                paste.ShortcutKeyDisplayString = "Ctrl+V";
-                paste.Enabled = HasClipboardContent;
-                paste.Click += delegate { PasteClipboard(); };
-                menu.Items.Add(paste);
-                menu.Items.Add(new ToolStripSeparator());
-
                 if (HasSelection)
                 {
+                    // 有选中元素时，粘贴由 AddEditItems 统一提供（剪切/复制/粘贴/旋转一组）。
+                    // 这里**不能再加一个**，否则右键菜单里会出现两个「粘贴」。
+                    menu.Items.Add(new ToolStripSeparator());
                     ToolStripMenuItem connectHint = new ToolStripMenuItem("按住右键从顶点拖动可连接");
                     connectHint.Enabled = false;
                     menu.Items.Add(connectHint);
@@ -1602,6 +1607,13 @@ namespace GraphEditor
                 }
                 else
                 {
+                    ToolStripMenuItem paste = new ToolStripMenuItem("粘贴(&P)");
+                    paste.ShortcutKeyDisplayString = "Ctrl+V";
+                    paste.Enabled = HasClipboardContent;
+                    paste.Click += delegate { PasteClipboard(); };
+                    menu.Items.Add(paste);
+                    menu.Items.Add(new ToolStripSeparator());
+
                     ToolStripMenuItem selectAll = new ToolStripMenuItem("全选(&A)");
                     selectAll.Click += delegate { SelectAll(); };
                     menu.Items.Add(selectAll);
@@ -1612,7 +1624,7 @@ namespace GraphEditor
                 }
             }
 
-            menu.Show(this, device);
+            return menu;
         }
 
         private PointD finalWorldPoint;
@@ -1689,7 +1701,55 @@ namespace GraphEditor
                 item.Click += delegate { ApplyColorToSelection(captured); };
                 color.DropDownItems.Add(item);
             }
+
+            // 默认颜色：清掉逐个着色，让选中的元素回到「跟随全局默认」。
+            // 和上面的调色盘点选不同，这个不是某一种具体颜色。
+            color.DropDownItems.Add(new ToolStripSeparator());
+            ToolStripMenuItem useDefault = new ToolStripMenuItem("默认颜色（跟随全局）(&D)");
+            useDefault.Image = MakeSwatchImage(DefaultColorForSelection(), 14, SelectionUsesDefaultColor());
+            useDefault.Click += delegate { ApplyDefaultColorToSelection(); };
+            color.DropDownItems.Add(useDefault);
+
             menu.Items.Add(color);
+        }
+
+        /// <summary>
+        /// 选中的元素「跟随全局默认」时应该呈现的颜色。同时选中顶点和边时以顶点为准
+        /// （顶点与边的全局默认色是两套）。
+        /// </summary>
+        private Color DefaultColorForSelection()
+        {
+            if (_selectedVertices.Count > 0) return _canvas.DefaultVertexColor;
+            if (_selectedEdges.Count > 0) return _canvas.DefaultEdgeColor;
+            return _canvas.DefaultVertexColor;
+        }
+
+        /// <summary>选中的元素是否全部处于「默认颜色」状态（即都没有单独设色）。</summary>
+        private bool SelectionUsesDefaultColor()
+        {
+            int total = 0;
+            foreach (Vertex v in SelectedVertices())
+            {
+                total++;
+                if (v.Color != null) return false;
+            }
+            foreach (Edge e in SelectedEdges())
+            {
+                total++;
+                if (e.Color != null) return false;
+            }
+            return total > 0;
+        }
+
+        /// <summary>把选中元素的单独着色清除，恢复为跟随全局默认色。</summary>
+        public void ApplyDefaultColorToSelection()
+        {
+            if (!HasSelection) return;
+            foreach (Vertex v in SelectedVertices()) v.Color = null;
+            foreach (Edge e in SelectedEdges()) e.Color = null;
+            NotifyCanvasChanged();
+            Invalidate();
+            SetHintText("已恢复默认颜色（跟随全局设置）");
         }
 
         private void AddDeleteItem(ContextMenuStrip menu)

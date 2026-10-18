@@ -364,18 +364,8 @@ namespace GraphEditor
                     SetHint("边名字显示位置已设为「" + text + "」");
                 }));
 
-            // ---- 画布 ----
-            ToolStripMenuItem canvasMenu = new ToolStripMenuItem("画布");
-            canvasMenu.DropDownItems.Add(GroupLabel("无限画布：滚动范围随内容自动变化"));
-            canvasMenu.DropDownItems.Add(new ToolStripSeparator());
-            ToolStripMenuItem recenter = new ToolStripMenuItem("回到原点(&C)");
-            recenter.Click += delegate { _canvas.CenterOnOrigin(); SetHint("视图已回到原点。"); };
-            canvasMenu.DropDownItems.Add(recenter);
-
             properties.DropDownItems.Add(vertex);
             properties.DropDownItems.Add(edge);
-            properties.DropDownItems.Add(new ToolStripSeparator());
-            properties.DropDownItems.Add(canvasMenu);
         }
 
         private static ToolStripMenuItem GroupLabel(string text)
