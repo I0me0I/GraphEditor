@@ -14,7 +14,7 @@
 在**普通 PowerShell 窗口**里运行：
 
 ```powershell
-cd D:\Projects\DshProjects\GraphEditor
+cd <仓库根目录>
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\push.ps1
 ```
 
