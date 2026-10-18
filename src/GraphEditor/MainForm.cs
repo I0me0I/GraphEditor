@@ -119,6 +119,7 @@ namespace GraphEditor
 
             _area.ActiveDocumentChanged += delegate { OnActiveDocumentChanged(); };
             _area.DocumentsChanged += delegate { UpdateParentTitle(); };
+            _area.NewDocumentRequested += delegate { NewDocument(false); };
         }
 
         /// <summary>供自检使用：菜单栏。</summary>

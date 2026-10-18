@@ -1820,19 +1820,26 @@ namespace GraphEditor.Tests
                 DocumentView dragged = form.ActiveDocumentView;
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Right);
                 Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两个面板");
-                CheckEqual(2, form.DocumentArea.PaneCount, "面板数为 2");
-
+                // 关掉面板里唯一的文档 → 自动补一个「未命名N」，不会出现空白面板
+                int panesBeforeClose = form.DocumentArea.PaneCount;
+                int docsBeforeClose = form.DocumentArea.DocumentCount;
                 Check(form.DocumentArea.CloseDocument(dragged), "关闭新面板里的文档");
-                Check(!form.DocumentArea.IsSplit, "面板空了自动收掉，回到单栏");
-                CheckEqual(1, form.DocumentArea.PaneCount, "只剩一个面板");
-                Control back = form.ActiveDocumentView.Parent.Parent;
-                CheckEqual(form.DocumentArea.Width, back.Parent.Width, "收掉后仍然铺满工作区");
+                CheckEqual(panesBeforeClose, form.DocumentArea.PaneCount, "面板数量不变（自动补新文档）");
+                CheckEqual(docsBeforeClose, form.DocumentArea.DocumentCount, "文档数量不变（关一个补一个）");
+                bool hasUntitled = false;
+                foreach (DocumentView each in form.DocumentArea.AllDocuments)
+                {
+                    if (each.DocumentName.StartsWith("未命名")) { hasUntitled = true; break; }
+                }
+                Check(hasUntitled, "补进来的是未命名文档");
+                form.DocumentArea.MergeToSinglePane();
 
                 // 两级拆分：整个工作区先拆 2 份，每份可以再拆 2 份 → 最多 4 个面板
                 // （每拆一次要把一份文档移进新面板，所以先补足文档）
                 System.Reflection.MethodInfo newDoc = typeof(MainForm).GetMethod("CreateDocument",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                 while (form.DocumentArea.DocumentCount < 6) newDoc.Invoke(form, null);
+                form.DocumentArea.MergeToSinglePane();
                 DocumentArea da = form.DocumentArea;
                 // 第 1 层：整个工作区拆成左右
                 DocumentView a1 = da.AllDocuments[0];
@@ -1878,16 +1885,28 @@ namespace GraphEditor.Tests
                 DocumentView doc = form.ActiveDocumentView;
                 Check(doc != null, "存在活动文档");
 
+                // 标签菜单：重命名 / 保存 / 另存为 / 导出 SVG / 关闭
                 ContextMenuStrip menu = form.DocumentArea.BuildTabMenu(doc);
-                CheckEqual(1, menu.Items.Count, "标签菜单只有一个菜单项");
-                Check(menu.Items[0].Text != null && menu.Items[0].Text.StartsWith("关闭文档"),
-                    "菜单项是「关闭文档」（实际：" + menu.Items[0].Text + "）");
-
-                // 点一下应当关掉该文档
+                List<string> texts = new List<string>();
+                foreach (ToolStripItem item in menu.Items) { if (item.Text != null) texts.Add(item.Text); }
+                Check(CountItemsStartingWith(menu, "重命名") == 1, "标签菜单含「重命名」");
+                Check(CountItemsStartingWith(menu, "保存") == 1, "标签菜单含「保存」");
+                Check(CountItemsStartingWith(menu, "另存为") == 1, "标签菜单含「另存为」");
+                Check(CountItemsStartingWith(menu, "导出为 SVG") == 1, "标签菜单含「导出为 SVG」");
+                Check(CountItemsStartingWith(menu, "关闭") == 1, "标签菜单含「关闭」");
+                TabControl tabs = (TabControl)doc.Parent.Parent;
+                // 点「关闭」应当关掉该文档（关空后会自动补一个未命名，所以文档总数不变）
                 int before = form.DocumentArea.DocumentCount;
-                menu.Items[0].PerformClick();
-                CheckEqual(before - 1, form.DocumentArea.DocumentCount, "点「关闭文档」后少了一个文档");
+                ToolStripMenuItem closeItem = FindMenuItem(menu, "关闭");
+                Check(closeItem != null, "找到关闭菜单项");
+                closeItem.PerformClick();
+                Check(form.DocumentArea.DocumentCount >= before - 1, "点「关闭」后文档被关掉（并补齐未命名）");
                 menu.Dispose();
+                // 面板菜单（右键标签条空白处）：新建文件 / 关闭全部
+                ContextMenuStrip paneMenu = form.DocumentArea.BuildPaneMenu(tabs);
+                Check(CountItemsStartingWith(paneMenu, "新建文件") == 1, "面板菜单含「新建文件」");
+                Check(CountItemsStartingWith(paneMenu, "关闭全部") == 1, "面板菜单含「关闭全部」");
+                paneMenu.Dispose();
             }
         }
 

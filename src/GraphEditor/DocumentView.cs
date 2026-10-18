@@ -17,6 +17,7 @@ namespace GraphEditor
         private bool _dirty;
         private bool _diagnosticMode;
         private int _untitledNumber;
+        private string _title;
 
         /// <summary>标题或修改状态变化（标签文字、父窗口标题据此刷新）。</summary>
         public event EventHandler StateChanged;
@@ -68,7 +69,19 @@ namespace GraphEditor
         /// <summary>标签页上显示的名字。</summary>
         public string DocumentName
         {
-            get { return string.IsNullOrEmpty(_filePath) ? UntitledName : Path.GetFileName(_filePath); }
+            get
+            {
+                if (!string.IsNullOrEmpty(_title)) return _title;
+                return string.IsNullOrEmpty(_filePath) ? UntitledName : Path.GetFileName(_filePath);
+            }
+        }
+
+        /// <summary>重命名标签（只改显示名，不动磁盘上的文件）。空字符串表示恢复默认。</summary>
+        public void Rename(string title)
+        {
+            string trimmed = title == null ? null : title.Trim();
+            _title = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+            RaiseStateChanged();
         }
 
         /// <summary>标签页文字（带修改标记）。</summary>
@@ -137,7 +150,9 @@ namespace GraphEditor
                 }
             }
 
+            bool pathChanged = !string.Equals(path, _filePath, StringComparison.OrdinalIgnoreCase);
             GraphIo.Save(_canvas.Canvas, path);
+            if (pathChanged) _title = null;   // 换文件名后显示新文件名
             _filePath = path;
             SetDirty(false);
             RaiseStateChanged();

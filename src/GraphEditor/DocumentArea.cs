@@ -55,6 +55,8 @@ namespace GraphEditor
         /// <summary>活动文档变化（切换标签、关闭标签、拆分/合并）时触发。</summary>
         public event EventHandler ActiveDocumentChanged;
         public event EventHandler DocumentsChanged;
+        /// <summary>需要在该面板里新建一个文档（由主窗口创建，面板身份由 ActivePane 提供）。</summary>
+        public event EventHandler NewDocumentRequested;
 
         public DocumentArea()
         {
@@ -314,8 +316,8 @@ namespace GraphEditor
                     owner.TabPages.Remove(page);
                     if (owner.TabPages.Count == 0)
                     {
-                        Pane empty = PaneOf(owner);
-                        if (empty != null) RemovePane(empty);
+                        // 关空了就补一个「未命名N」，而不是把面板删掉
+                        RequestNewDocumentIn(owner);
                     }
                 }
                 doc.Dispose();
@@ -793,28 +795,39 @@ namespace GraphEditor
 
         // ================= 标签右键菜单 =================
 
-        /// <summary>右键点标签：弹出「关闭文档」菜单。</summary>
+        /// <summary>
+        /// 右键标签条：点在标签上 → 标签菜单（重命名/保存/另存为/导出/关闭）；
+        /// 点在标签条的空白处 → 面板菜单（新建文件/关闭全部）。
+        /// </summary>
         private void OnTabsRightClick(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right) return;
             TabControl tabs = (TabControl)sender;
-            DocumentView doc = DocumentAtTab(tabs, e.Location);
-            if (doc == null) return;
-
-            // 右键同时切换到这个标签，符合 Windows 习惯
-            TabPage page = doc.Tag as TabPage;
-            if (page != null && page.Parent == tabs) tabs.SelectedTab = page;
             Pane pane = PaneOf(tabs);
             if (pane != null) _active = pane;
 
-            // 复用同一个菜单实例，避免每次右键都新建窗口对象
+            DocumentView doc = DocumentAtTab(tabs, e.Location);
             if (_tabMenu == null || _tabMenu.IsDisposed) _tabMenu = new ContextMenuStrip();
-            FillTabMenu(_tabMenu, doc);
+
+            if (doc != null)
+            {
+                // 右键同时切换到这个标签，符合 Windows 习惯
+                TabPage page = doc.Tag as TabPage;
+                if (page != null && page.Parent == tabs) tabs.SelectedTab = page;
+                FillTabMenu(_tabMenu, doc);
+            }
+            else
+            {
+                // 只有标签条的空白带才弹面板菜单；点页面内容不弹（那是画布的地盘）
+                if (e.Y >= tabs.DisplayRectangle.Top) return;
+                FillPaneMenu(_tabMenu, tabs);
+            }
+
             try { _tabMenu.Show(tabs, e.Location); }
             catch (Exception) { }
         }
 
-        /// <summary>标签菜单：目前只有「关闭文档」。</summary>
+        /// <summary>标签菜单：重命名 / 保存 / 另存为 / 导出 SVG / 关闭。</summary>
         internal ContextMenuStrip BuildTabMenu(DocumentView doc)
         {
             ContextMenuStrip menu = new ContextMenuStrip();
@@ -822,15 +835,125 @@ namespace GraphEditor
             return menu;
         }
 
-        /// <summary>把「关闭文档」填进指定菜单。</summary>
         internal void FillTabMenu(ContextMenuStrip menu, DocumentView doc)
         {
             menu.Items.Clear();
-            ToolStripMenuItem close = new ToolStripMenuItem("关闭文档(&C)");
-            close.ShortcutKeyDisplayString = "Ctrl+W";
+            if (doc == null) return;
             DocumentView captured = doc;
+
+            ToolStripMenuItem rename = new ToolStripMenuItem("重命名(&R)…");
+            rename.Click += delegate { PromptRename(captured); };
+            menu.Items.Add(rename);
+            menu.Items.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem save = new ToolStripMenuItem("保存(&S)");
+            save.ShortcutKeyDisplayString = "Ctrl+S";
+            save.Click += delegate { SaveFromMenu(captured, false); };
+            menu.Items.Add(save);
+
+            ToolStripMenuItem saveAs = new ToolStripMenuItem("另存为(&A)…");
+            saveAs.Click += delegate { SaveFromMenu(captured, true); };
+            menu.Items.Add(saveAs);
+
+            ToolStripMenuItem export = new ToolStripMenuItem("导出为 SVG(&E)…");
+            export.Click += delegate { ExportFromMenu(captured); };
+            menu.Items.Add(export);
+            menu.Items.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem close = new ToolStripMenuItem("关闭(&C)");
+            close.ShortcutKeyDisplayString = "Ctrl+W";
             close.Click += delegate { CloseDocument(captured); };
             menu.Items.Add(close);
+        }
+
+        /// <summary>面板菜单（右键标签条空白处）：新建文件 / 关闭全部。</summary>
+        internal ContextMenuStrip BuildPaneMenu(TabControl tabs)
+        {
+            ContextMenuStrip menu = new ContextMenuStrip();
+            FillPaneMenu(menu, tabs);
+            return menu;
+        }
+
+        internal void FillPaneMenu(ContextMenuStrip menu, TabControl tabs)
+        {
+            menu.Items.Clear();
+            TabControl captured = tabs;
+
+            ToolStripMenuItem create = new ToolStripMenuItem("新建文件(&N)");
+            create.ShortcutKeyDisplayString = "Ctrl+N";
+            create.Click += delegate { RequestNewDocumentIn(captured); };
+            menu.Items.Add(create);
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem closeAll = new ToolStripMenuItem("关闭全部(&L)");
+            closeAll.Click += delegate { CloseAllInPane(captured); };
+            menu.Items.Add(closeAll);
+        }
+
+        /// <summary>重命名当前标签（只改显示名）。</summary>
+        private void PromptRename(DocumentView doc)
+        {
+            if (doc == null) return;
+            string text;
+            if (!PromptDialog.ShowText(FindForm(), "重命名文档", "新的标签名字：", doc.DocumentName, out text)) return;
+            doc.Rename(text);
+            RaiseDocumentsChanged();
+        }
+
+        private void SaveFromMenu(DocumentView doc, bool saveAs)
+        {
+            if (doc == null) return;
+            try
+            {
+                if (doc.Save(saveAs)) RaiseDocumentsChanged();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(FindForm(), "保存失败：" + Environment.NewLine + ex.Message,
+                    "GraphEditor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportFromMenu(DocumentView doc)
+        {
+            if (doc == null) return;
+            try
+            {
+                string path = doc.ExportSvg();
+                if (path != null)
+                {
+                    MessageBox.Show(FindForm(), "已导出到：" + Environment.NewLine + path,
+                        "GraphEditor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(FindForm(), "导出失败：" + Environment.NewLine + ex.Message,
+                    "GraphEditor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>关闭这个面板上的所有标签；关空后自动补一个未命名文档。</summary>
+        private void CloseAllInPane(TabControl tabs)
+        {
+            if (tabs == null) return;
+            Pane pane = PaneOf(tabs);
+            if (pane != null) _active = pane;
+
+            List<DocumentView> docs = DocumentsIn(pane);
+            foreach (DocumentView doc in docs) CloseDocument(doc);
+
+            if (tabs.TabPages.Count == 0) RequestNewDocumentIn(tabs);
+        }
+
+        /// <summary>请求在指定面板里新建文档（真正的创建由主窗口完成）。</summary>
+        private void RequestNewDocumentIn(TabControl tabs)
+        {
+            Pane pane = PaneOf(tabs);
+            if (pane != null) _active = pane;
+            EventHandler handler = NewDocumentRequested;
+            if (handler != null) handler(this, EventArgs.Empty);
         }
 
         /// <summary>客户区坐标处的标签对应哪个文档；不在任何标签上返回 null。</summary>
