@@ -83,6 +83,12 @@ namespace GraphEditor
             pane.Tabs.Dock = DockStyle.Fill;
             ConfigureTabs(pane.Tabs);
             pane.Host.Controls.Add(pane.Tabs);
+            // 标签条右侧的空白处不属于 TabControl（它的窗口没覆盖那里），
+            // 点击落在承载面板上，所以在这里接右键。
+            pane.Host.MouseDown += delegate(object sender, MouseEventArgs e)
+            {
+                OnHostRightClick(pane, e);
+            };
 
             _panes.Add(pane);
 
@@ -801,6 +807,26 @@ namespace GraphEditor
         }
 
         // ================= 标签右键菜单 =================
+
+        /// <summary>
+        /// 承载面板上的右键：标签条右侧的空白处属于面板（不属于 TabControl），
+        /// 这里弹面板菜单（新建文件 / 关闭全部）。
+        /// </summary>
+        private void OnHostRightClick(Pane pane, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right) return;
+            if (pane == null || pane.Tabs == null || pane.Tabs.IsDisposed) return;
+
+            // 只处理标签条那一带；页面区域由画布负责
+            Point inTabs = pane.Tabs.PointToClient(pane.Host.PointToScreen(e.Location));
+            if (inTabs.Y >= pane.Tabs.DisplayRectangle.Top) return;
+
+            _active = pane;
+            if (_tabMenu == null || _tabMenu.IsDisposed) _tabMenu = new ContextMenuStrip();
+            FillPaneMenu(_tabMenu, pane.Tabs);
+            try { _tabMenu.Show(pane.Host, e.Location); }
+            catch (Exception) { }
+        }
 
         /// <summary>
         /// 右键标签条：点在标签上 → 标签菜单（重命名/保存/另存为/导出/关闭）；

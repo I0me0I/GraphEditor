@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.3.8-blueviolet)](#)
+[![Version](https://img.shields.io/badge/version-1.3.9-blueviolet)](#)
 [![Tests](https://img.shields.io/badge/tests-670%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
