@@ -402,8 +402,9 @@ namespace GraphEditor
             split.Panel1.Controls.Add(first);
             split.Panel2.Controls.Add(second);
 
-            // 双击分割条 = 合并回单栏（和菜单里的「合并为单栏」等价）
-            split.MouseDoubleClick += delegate { MergeToSinglePane(); };
+            // 双击分割条 = 只合并这个分割器两侧的内容（第一层时即为整个工作区）
+            SplitContainer thisSplit = split;
+            split.MouseDoubleClick += delegate { CollapseSplit(thisSplit); };
 
             AttachNode(split, oldParent, oldIndex, wasRoot);
             _active = created;
@@ -657,6 +658,57 @@ namespace GraphEditor
             }
         }
 
+        /// <summary>
+        /// 折叠一个分割器：只把它两侧的内容并成一个面板，
+        /// 其它分割器（如果有）保持不动。
+        /// 双击第一层的分割条时，两侧就是整个工作区，因此等于全部合并。
+        /// </summary>
+        private void CollapseSplit(SplitContainer split)
+        {
+            if (split == null || split.IsDisposed) return;
+
+            List<Pane> subtree = new List<Pane>();
+            CollectPanes(split, subtree);
+            if (subtree.Count <= 1) return;
+
+            Pane first = subtree[0];
+            for (int i = 1; i < subtree.Count; i++)
+            {
+                List<TabPage> moving = new List<TabPage>();
+                foreach (TabPage page in subtree[i].Tabs.TabPages) moving.Add(page);
+                foreach (TabPage page in moving)
+                {
+                    DocumentView doc = page.Tag as DocumentView;
+                    MovePage(page, doc, first.Tabs);
+                }
+            }
+
+            // 用 first.Host 顶替整个 split 节点
+            Control parent = split.Parent;
+            int index = parent != null ? parent.Controls.GetChildIndex(split) : -1;
+            bool wasRoot = ReferenceEquals(split, _root);
+            if (parent != null) parent.Controls.Remove(split);
+
+            AttachNode(first.Host, parent, index, wasRoot);
+
+            for (int i = 1; i < subtree.Count; i++)
+            {
+                _panes.Remove(subtree[i]);
+                try { subtree[i].Host.Dispose(); }
+                catch (Exception) { }
+            }
+
+            try { split.Dispose(); }
+            catch (Exception) { }
+
+            _active = first;
+            if (first.Tabs.TabPages.Count > 0) first.Tabs.SelectedIndex = 0;
+
+            RelayoutPanes();
+            RaiseDocumentsChanged();
+            RaiseActiveChanged();
+        }
+
         private void ApplySplitterDistance(SplitContainer split)
         {
             try
@@ -777,11 +829,20 @@ namespace GraphEditor
             if (!_dragging) return;
 
             Point client = PointToClient(now);
-            DropPlacement place = HitDropPlacement(client);
+            Pane target = TargetPaneOf(client);
+            DropPlacement place = EffectivePlacement(target, client);
             _dropPlacement = place;
 
-            bool possible = place != DropPlacement.None && CanSplitCurrent();
-            if (!possible)
+            if (place == DropPlacement.None)
+            {
+                // 落到另一个面板的内部/标签条 → 并入那个面板（不是拆分）
+                bool canMove = target != null && CanMoveInto(target);
+                tabs.Cursor = canMove ? Cursors.Default : Cursors.No;
+                HideDropHint();
+                return;
+            }
+
+            if (!CanSplitCurrent())
             {
                 tabs.Cursor = Cursors.No;
                 HideDropHint();
@@ -790,7 +851,7 @@ namespace GraphEditor
 
             // 光标用系统默认箭头，落点由虚线框表示
             tabs.Cursor = Cursors.Default;
-            ShowDropHint(DropRectangleFor(TargetPaneOf(client), place));
+            ShowDropHint(DropRectangleFor(target, place));
         }
 
         private void OnTabsMouseUp(object sender, MouseEventArgs e)
@@ -798,8 +859,6 @@ namespace GraphEditor
             TabControl tabs = (TabControl)sender;
             DocumentView doc = _dragDocument;
             bool dragged = _dragging;
-            DropPlacement place = _dropPlacement;
-            Point client = PointToClient(Cursor.Position);
 
             _dragDocument = null;
             _dragging = false;
@@ -810,18 +869,20 @@ namespace GraphEditor
 
             if (doc == null || !dragged) return;
 
-            // 拖到面板中间（不在边缘）：把标签移到那个面板里
-            Pane dropTarget = TargetPaneOf(client);
+            Point client = PointToClient(Cursor.Position);
+            Pane target = TargetPaneOf(client);
+            if (target == null) return;
+            DropPlacement place = EffectivePlacement(target, client);
+
             if (place == DropPlacement.None)
             {
-                if (dropTarget != null) MoveIntoPane(dropTarget, doc);
+                // 拖到面板内部/标签条：把标签并进那个面板
+                MoveIntoPane(target, doc);
                 return;
             }
-            if (!CanSplitCurrent()) return;
 
-            // 拖到哪个面板就往哪个面板里拆
-            Pane target = TargetPaneOf(client);
-            if (target != null) _active = target;
+            if (!CanSplitCurrent()) return;
+            _active = target;
             ApplyDrop(doc, place);
         }
 
@@ -851,6 +912,35 @@ namespace GraphEditor
             Pane target = TargetPaneOf(PointToClient(Cursor.Position));
             return CanSplitTargetOf(target);
         }
+        /// <summary>
+        /// 实际落点：落在目标面板的「标签条」上时视为并入（None），
+        /// 只有落在面板内容区的四条边上才算拆分。
+        /// </summary>
+        private DropPlacement EffectivePlacement(Pane target, Point client)
+        {
+            if (target == null) return DropPlacement.None;
+            if (IsOverTabStrip(target, client)) return DropPlacement.None;
+            return HitDropPlacement(client);
+        }
+
+        /// <summary>客户区坐标是否落在该面板的标签条（含标签页头部的空白带）上。</summary>
+        private bool IsOverTabStrip(Pane target, Point client)
+        {
+            Point tabsPoint = target.Tabs.PointToClient(PointToScreen(client));
+            int header = target.Tabs.DisplayRectangle.Top;
+            if (header <= 0) header = target.Tabs.ItemSize.Height + 6;
+            return tabsPoint.Y >= 0 && tabsPoint.Y < header;
+        }
+
+        /// <summary>能否把文档并入该面板（目标不能就是它自己所在的面板）。</summary>
+        private bool CanMoveInto(Pane target)
+        {
+            if (target == null || _dragDocument == null) return false;
+            TabPage page = _dragDocument.Tag as TabPage;
+            if (page == null) return false;
+            return page.Parent != target.Tabs;
+        }
+
         /// <summary>
         /// 鼠标所在的贴靠区（相对该面板的左/右/上/下）；不在边缘返回 None。
         /// 必须区分左右与上下，否则预览永远画在同一侧。

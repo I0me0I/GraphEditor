@@ -16,6 +16,7 @@ namespace GraphEditor
         private string _filePath;
         private bool _dirty;
         private bool _diagnosticMode;
+        private int _untitledNumber;
 
         /// <summary>标题或修改状态变化（标签文字、父窗口标题据此刷新）。</summary>
         public event EventHandler StateChanged;
@@ -50,12 +51,24 @@ namespace GraphEditor
 
         public string FilePath { get { return _filePath; } }
 
+        /// <summary>未命名文档的编号（1 起）；0 表示不编号。</summary>
+        public int UntitledNumber
+        {
+            get { return _untitledNumber; }
+            set { _untitledNumber = value; }
+        }
+
+        private string UntitledName
+        {
+            get { return _untitledNumber > 0 ? "未命名" + _untitledNumber : "未命名"; }
+        }
+
         public bool IsDirty { get { return _dirty; } }
 
         /// <summary>标签页上显示的名字。</summary>
         public string DocumentName
         {
-            get { return string.IsNullOrEmpty(_filePath) ? "未命名" : Path.GetFileName(_filePath); }
+            get { return string.IsNullOrEmpty(_filePath) ? UntitledName : Path.GetFileName(_filePath); }
         }
 
         /// <summary>标签页文字（带修改标记）。</summary>

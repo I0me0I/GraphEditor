@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.3.2-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-651%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.3.3-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-659%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -173,7 +173,9 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
   框出即将占用的那一半区域（左/右/上/下各自对应正确的一半）；不能放置时显示系统禁止光标，按 `Esc` 可取消。
 - 把文档拖回原来的半边会**自动收拢**回单栏，不会留下空白的半块区域。
 - `窗口` 菜单提供左右分栏 / 上下分栏 / 合并为单栏，以及文档切换与关闭（`Ctrl+W`）。
-- 合并回单栏有两条路：**双击面板之间的分割条**，或 `窗口 → 合并为单栏`。
+- 合并回单栏：**双击某条分割条只合并它两侧的面板**（第一层就是全部）；
+  也可以 `窗口 → 合并为单栏` 一次全部合并。
+- 拖到另一个面板的**标签条或中间** → 标签并入那个面板；拖到**内容区边缘** → 拆分。
 - 关闭文档或退出程序时，若有未保存修改会逐个询问。
 ## 操作方式
 
@@ -264,7 +266,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **651 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **659 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -278,10 +280,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 651    失败: 0
+通过: 659    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=651 failed=0
+RESULT passed=659 failed=0
 ```
 
 ### 什么时候该跑测试
@@ -319,7 +321,7 @@ GraphEditor/
 │  ├─ Dialogs.cs               输入对话框、调色盘控件
 │  └─ AssemblyInfo.cs          版本信息
 ├─ tests/
-│  ├─ TestRunner.cs            651 项断言的自检程序
+│  ├─ TestRunner.cs            659 项断言的自检程序
 │  └─ run-tests.ps1            编译并运行自检
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）

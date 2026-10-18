@@ -28,6 +28,7 @@ namespace GraphEditor
         private readonly ToolStripMenuItem _menuRotate = new ToolStripMenuItem("旋转(&R)");
 
         private bool _diagnosticMode;
+        private int _untitledCounter;
 
         /// <summary>当前活动的文档；没有文档时为 null。</summary>
         private DocumentView ActiveDocument
@@ -687,6 +688,7 @@ namespace GraphEditor
         private DocumentView CreateDocument()
         {
             DocumentView doc = new DocumentView(_diagnosticMode);
+            doc.UntitledNumber = ++_untitledCounter;   // 未命名1、未命名2、……
             doc.CanvasArea.SelectionChanged += delegate { if (doc == ActiveDocument) UpdateSelectionUi(); };
             doc.CanvasArea.ZoomChanged += delegate { if (doc == ActiveDocument) UpdateStatusRight(); };
             doc.CanvasArea.HintTextChanged += delegate(object sender, HintTextEventArgs e)

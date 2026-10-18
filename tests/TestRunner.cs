@@ -93,6 +93,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
                 RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
+                RunSelected(only, "TestUntitledAndDropZones", TestUntitledAndDropZones);
                 RunSelected(only, "TestDropPreviewZones", TestDropPreviewZones);
                 RunSelected(only, "TestDefaultsAndOppositeEdges", TestDefaultsAndOppositeEdges);
                 RunSelected(only, "TestGraphTypeOptions", TestGraphTypeOptions);
@@ -1865,6 +1866,71 @@ namespace GraphEditor.Tests
                 Check(!da.IsSplit, "合并后不再是拆分状态");
                 CheckEqual(6, da.DocumentCount, "合并后文档数不变");
             }
+        }
+
+        /// <summary>
+        /// 未命名文档要带编号；拖到标签条 = 并入该面板，拖到内容区边缘 = 拆分。
+        /// </summary>
+        private static void TestUntitledAndDropZones()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                System.Reflection.MethodInfo create = typeof(MainForm).GetMethod("CreateDocument",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+                create.Invoke(form, null);
+                create.Invoke(form, null);
+                List<DocumentView> docs = form.DocumentArea.AllDocuments;
+                Check(docs.Count >= 3, "至少有三个未命名文档");
+                CheckEqual("未命名1", docs[0].DocumentName, "第一个未命名文档编号为 1");
+                CheckEqual("未命名2", docs[1].DocumentName, "第二个未命名文档编号为 2");
+                CheckEqual("未命名3", docs[2].DocumentName, "第三个未命名文档编号为 3");
+
+                // 拆成两个面板，检查「标签条」与「内容区边缘」的判定
+                DocumentView first = docs[0];
+                form.DocumentArea.Activate(first);
+                form.DocumentArea.ApplyDrop(first, DropPlacement.Right);
+                CheckEqual(2, form.DocumentArea.PaneCount, "拆成两个面板");
+
+                object target = LastPaneOf(form.DocumentArea);
+                if (target == null)
+                {
+                    Check(false, "取到目标面板");
+                    return;
+                }
+
+                System.Reflection.MethodInfo effective = typeof(DocumentArea).GetMethod("EffectivePlacement",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Panel host = (Panel)target.GetType().GetField("Host").GetValue(target);
+                TabControl tabs = (TabControl)target.GetType().GetField("Tabs").GetValue(target);
+
+                Rectangle hostScreen = host.RectangleToScreen(host.ClientRectangle);
+                Point onTabs = form.DocumentArea.PointToClient(
+                    tabs.PointToScreen(new Point(tabs.Width / 2, tabs.ItemSize.Height / 2)));
+                CheckEqual(DropPlacement.None, (DropPlacement)effective.Invoke(form.DocumentArea, new object[] { target, onTabs }),
+                    "拖到标签条 → 并入（不拆分）");
+
+                Point onTopEdge = form.DocumentArea.PointToClient(
+                    new Point(hostScreen.Left + hostScreen.Width / 2,
+                              hostScreen.Top + tabs.DisplayRectangle.Top + 4));
+                CheckEqual(DropPlacement.Top, (DropPlacement)effective.Invoke(form.DocumentArea, new object[] { target, onTopEdge }),
+                    "拖到内容区上边缘 → 上下拆分");
+
+                Point onMiddle = form.DocumentArea.PointToClient(
+                    new Point(hostScreen.Left + hostScreen.Width / 2, hostScreen.Top + hostScreen.Height / 2));
+                CheckEqual(DropPlacement.None, (DropPlacement)effective.Invoke(form.DocumentArea, new object[] { target, onMiddle }),
+                    "拖到面板正中 → 并入");
+            }
+        }
+
+        /// <summary>取最后一个面板（内层 Pane 类型是私有的，这里按反射拿）。</summary>
+        private static object LastPaneOf(DocumentArea area)
+        {
+            System.Collections.IList panes = (System.Collections.IList)typeof(DocumentArea)
+                .GetField("_panes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(area);
+            return panes.Count > 0 ? panes[panes.Count - 1] : null;
         }
 
         /// <summary>
