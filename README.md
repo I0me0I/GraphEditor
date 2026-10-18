@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.1.2-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-636%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.1.3-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-640%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -163,6 +163,7 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - `文件 → 新建` / `打开` 会新开一个标签页，而不是替换当前图。
 - 每个文档有**自己的工作区、文件路径与修改状态**，互不影响（包括样式设置与图类型）。
 - 每个文档面板使用经典的**凹陷 3D 边框**（含标签页），看起来像嵌在工作区里。
+- 标签条自绘：深灰蓝底 + 未选中中间灰 + 选中纯白并带蓝色强调线，层次分明（原生 TabControl 做不到）。
 - 所有菜单（编辑、视图、属性）只作用于**当前活动标签页**。
 - **拖动标签页到窗口边缘**即可分栏：拖到左/右边 → 左右并排，拖到上/下边 → 上下分栏。
 - 拖动时光标变成**箭头 + 文档图标**（表示正在搬动一个文档），到达可贴靠位置时**高亮预览**即将占用的那一半区域
@@ -259,7 +260,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **636 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **640 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -273,10 +274,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 636    失败: 0
+通过: 640    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=636 failed=0
+RESULT passed=640 failed=0
 ```
 
 自检会真实构造 `MainForm`、模拟鼠标按下 / 移动 / 抬起（包括带真实定时器等待的用例），因此验证的是**用户实际会走的代码路径**，而不只是纯函数。
@@ -379,6 +380,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 ```
 
 不必为了跑脚本把全局执行策略改成 `Unrestricted`。
+
+</details>
+
+<details>
+<summary><b>标签栏和边框为什么是自绘的？</b></summary>
+
+因为 WinForms 自带的边框能力很有限：
+
+| 层级 | 可用样式 |
+| --- | --- |
+| `Form.FormBorderStyle` | `None` / `FixedSingle` / `Fixed3D` / `FixedDialog` / `Sizable` / `FixedToolWindow` / `SizableToolWindow`（3D 只有一种） |
+| 控件 `BorderStyle` | `None` / `FixedSingle` / `Fixed3D`（就三种） |
+| `ControlPaint.DrawBorder3D` | `Raised` / `RaisedInner` / `RaisedOuter` / `Sunken` / `SunkenInner` / `SunkenOuter` / `Etched` / `Bump` / `Flat` / `Adjust` |
+
+关键问题：**`TabControl` 根本没有 `BorderStyle` 属性，标签条底色也无法设置**。
+默认的浅灰标签和浅灰空白几乎同色，对比度极低。
+
+所以本项目用 `ControlPaint.DrawBorder3D(..., Border3DStyle.Sunken)` 画凹陷边框，
+并自绘 `DocumentTabControl`：深灰蓝底 + 未选中中间灰 + 选中纯白 + 顶部蓝色强调线。
 
 </details>
 

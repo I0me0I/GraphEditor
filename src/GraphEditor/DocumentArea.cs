@@ -23,8 +23,8 @@ namespace GraphEditor
     public sealed class DocumentArea : UserControl
     {
         private readonly SplitContainer _split = new SplitContainer();
-        private readonly TabControl _tabsFirst = new TabControl();
-        private readonly TabControl _tabsSecond = new TabControl();
+        private readonly TabControl _tabsFirst = new DocumentTabControl();
+        private readonly TabControl _tabsSecond = new DocumentTabControl();
         private readonly PaneFrame _frameFirst = new PaneFrame();
         private readonly PaneFrame _frameSecond = new PaneFrame();
 

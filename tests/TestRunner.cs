@@ -1876,6 +1876,18 @@ namespace GraphEditor.Tests
                 Check(DragCursors.Document.Size.Width > 0, "拖动光标有有效尺寸");
                 Check(DragCursors.DocumentForbidden != null, "禁止放置光标创建成功");
 
+                // 标签条对比度：选中标签 / 未选中标签 / 标签条空白处必须明显区分
+                double stripLum = DocumentTabControl.Luminance(DocumentTabControl.StripBackground);
+                double normalLum = DocumentTabControl.Luminance(DocumentTabControl.TabBackground(false));
+                double selectedLum = DocumentTabControl.Luminance(DocumentTabControl.TabBackground(true));
+                Check(selectedLum - stripLum >= 0.15,
+                    "选中标签与标签条空白处对比足够（亮度差 " + (selectedLum - stripLum).ToString("0.00") + "）");
+                Check(normalLum - stripLum >= 0.05,
+                    "未选中标签与标签条空白处也能区分（亮度差 " + (normalLum - stripLum).ToString("0.00") + "）");
+                Check(selectedLum > normalLum, "选中的标签比未选中的更亮");
+                Check(DocumentTabControl.StripBackground != DocumentTabControl.TabBackground(true),
+                    "标签条底色与选中标签不是同一个颜色");
+
                 Check(!area.IsDraggingTab, "初始不在拖动状态");
                 area.CancelDrag();   // 没有拖动时调用也必须安全
                 Check(!area.IsDraggingTab, "取消后仍不在拖动状态");
