@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.3.4-blueviolet)](#)
+[![Version](https://img.shields.io/badge/version-1.3.5-blueviolet)](#)
 [![Tests](https://img.shields.io/badge/tests-659%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -175,7 +175,8 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 - `窗口` 菜单提供左右分栏 / 上下分栏 / 合并为单栏，以及文档切换与关闭（`Ctrl+W`）。
 - 合并回单栏：**双击某条分割条只合并它两侧的面板**（第一层就是全部）；
   也可以 `窗口 → 合并为单栏` 一次全部合并。
-- 拖到另一个面板的**标签条或中间** → 标签并入那个面板；拖到**内容区边缘** → 拆分。
+- 拖到另一个面板的**标签条或中间** → 标签并入那个面板（预览高亮**整块面板**）；
+  拖到**内容区边缘** → 拆成两半（预览只高亮**那一半**）。
 - 关闭文档或退出程序时，若有未保存修改会逐个询问。
 ## 操作方式
 

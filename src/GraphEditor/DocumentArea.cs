@@ -835,10 +835,12 @@ namespace GraphEditor
 
             if (place == DropPlacement.None)
             {
-                // 落到另一个面板的内部/标签条 → 并入那个面板（不是拆分）
+                // 落到另一个面板的内部/标签条 → 并入那个面板（不是拆分）。
+                // 预览同样高亮，只是范围是「整块目标面板」，和拆分时的「一半」区分开。
                 bool canMove = target != null && CanMoveInto(target);
-                tabs.Cursor = canMove ? Cursors.Default : Cursors.No;
-                HideDropHint();
+                tabs.Cursor = Cursors.Default;
+                if (canMove) ShowDropHint(DropRectangleFor(target, DropPlacement.None));
+                else HideDropHint();
                 return;
             }
 
