@@ -423,6 +423,12 @@ namespace GraphEditor
             es.Add("labelPlacement", JsonValue.From(EdgePlacementToToken(c.EdgeLabelPlacement)));
             root.Add("edgeStyle", es);
 
+            // 图类型：多重图 / 有向图
+            JsonValue graph = JsonValue.NewObject();
+            graph.Add("multi", JsonValue.From(c.MultiGraph));
+            graph.Add("directed", JsonValue.From(c.Directed));
+            root.Add("graph", graph);
+
             JsonValue vertices = JsonValue.NewArray();
             List<Vertex> sortedVertices = new List<Vertex>(c.Vertices);
             sortedVertices.Sort(delegate(Vertex a, Vertex b) { return a.Id.CompareTo(b.Id); });
@@ -505,6 +511,14 @@ namespace GraphEditor
                 // 缺省与「新建图」的默认一致：边默认不命名
                 if (es.Get("naming") != null) c.EdgeNaming = TokenToNaming(es.Get("naming").AsString("none"));
                 if (es.Get("labelPlacement") != null) c.EdgeLabelPlacement = TokenToEdgePlacement(es.Get("labelPlacement").AsString("above"));
+            }
+
+            // 图类型。缺省与「新建图」一致：多重图、有向图。
+            JsonValue graph = root.Get("graph");
+            if (graph != null)
+            {
+                if (graph.Get("multi") != null) c.MultiGraph = graph.Get("multi").AsBool(true);
+                if (graph.Get("directed") != null) c.Directed = graph.Get("directed").AsBool(true);
             }
 
             JsonValue vertices = root.Get("vertices");

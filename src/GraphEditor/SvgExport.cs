@@ -80,6 +80,62 @@ namespace GraphEditor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 有向边的箭头（填充三角形）。与画布端一致：沿折线从末端回退到终点顶点边界上。
+        /// </summary>
+        private static void AppendArrowHead(StringBuilder sb, GraphCanvas canvas, Edge e, PointD[] pts, Color color)
+        {
+            if (pts.Length < 2) return;
+
+            double size = 6.0 + canvas.EdgeWidth * 1.6;
+            double half = size * 0.5;
+            double guard = e.IsLoop ? 0 : canvas.VertexRadius + size * 0.5;
+
+            double remaining = guard;
+            double tipX = pts[pts.Length - 1].X;
+            double tipY = pts[pts.Length - 1].Y;
+            double dx = pts[pts.Length - 1].X - pts[pts.Length - 2].X;
+            double dy = pts[pts.Length - 1].Y - pts[pts.Length - 2].Y;
+            double dirLen = Math.Sqrt(dx * dx + dy * dy);
+            if (dirLen > 1e-9) { dx /= dirLen; dy /= dirLen; }
+
+            for (int i = pts.Length - 1; i > 0 && remaining > 0; i--)
+            {
+                double sx = pts[i].X - pts[i - 1].X;
+                double sy = pts[i].Y - pts[i - 1].Y;
+                double segLen = Math.Sqrt(sx * sx + sy * sy);
+                if (segLen < 1e-9) continue;
+                if (segLen >= remaining)
+                {
+                    double t = remaining / segLen;
+                    tipX = pts[i].X - sx * t;
+                    tipY = pts[i].Y - sy * t;
+                    dx = sx / segLen;
+                    dy = sy / segLen;
+                    remaining = 0;
+                }
+                else
+                {
+                    remaining -= segLen;
+                    tipX = pts[i - 1].X;
+                    tipY = pts[i - 1].Y;
+                }
+            }
+
+            if (Math.Abs(dx) < 1e-9 && Math.Abs(dy) < 1e-9) return;
+
+            double bx = tipX - dx * size;
+            double by = tipY - dy * size;
+            double px = -dy;
+            double py = dx;
+
+            sb.Append("    <polygon points=\"")
+              .Append(Num(tipX)).Append(",").Append(Num(tipY)).Append(" ")
+              .Append(Num(bx + px * half)).Append(",").Append(Num(by + py * half)).Append(" ")
+              .Append(Num(bx - px * half)).Append(",").Append(Num(by - py * half))
+              .Append("\" fill=\"").Append(Hex(color)).Append("\"/>\n");
+        }
+
         private static void AppendEdge(StringBuilder sb, GraphCanvas canvas, Edge e)
         {
             PointD[] pts = canvas.EdgePolyline(e);
@@ -116,6 +172,9 @@ namespace GraphEditor
                 }
                 sb.Append("\" ").Append(style).Append("/>\n");
             }
+
+            // 有向图：在终点画箭头（无向图不画，边保留）
+            if (canvas.Directed) AppendArrowHead(sb, canvas, e, pts, color);
 
             if (!string.IsNullOrEmpty(e.Name))
             {

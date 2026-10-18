@@ -2111,6 +2111,83 @@ namespace GraphEditor
                 }
                 g.DrawLines(pen, converted);
             }
+
+            // 有向图：在终点（V2 一侧）画箭头。无向图只是不画箭头，边本身保留。
+            if (_canvas.Directed) DrawArrowHead(g, pen, edge, pts);
+        }
+
+        /// <summary>
+        /// 在折线末端按局部方向画一个实心箭头。
+        /// 折线是「顶点中心到顶点中心」，所以箭头要沿折线往回退到终点顶点的边界上，
+        /// 否则会被后来绘制的顶点盖住。
+        /// </summary>
+        private void DrawArrowHead(Graphics g, Pen pen, Edge edge, PointD[] pts)
+        {
+            if (pts.Length < 2) return;
+
+            // 尺寸随线宽与缩放变化，但换算回图像坐标，保证视觉上恒定
+            double inv = 1.0 / _zoom;
+            double size = (6.0 + _canvas.EdgeWidth * 1.6) * inv;
+            double half = size * 0.5;
+
+            // 终点顶点边界：直线边要沿折线精确退到圆外，自环的近端本来就在圆外
+            double guard = edge.IsLoop ? 0 : _canvas.VertexRadius + size * 0.5;
+
+            // 沿折线从末端往回走 guard 的距离，插值出箭头尖端与方向
+            // （不能只按折线顶点回退：直线边只有两个端点，退一格就跑到另一头了）
+            double remaining = guard;
+            double tipX = pts[pts.Length - 1].X;
+            double tipY = pts[pts.Length - 1].Y;
+            double dx = pts[pts.Length - 1].X - pts[pts.Length - 2].X;
+            double dy = pts[pts.Length - 1].Y - pts[pts.Length - 2].Y;
+            double dirLen = Math.Sqrt(dx * dx + dy * dy);
+            if (dirLen > 1e-9) { dx /= dirLen; dy /= dirLen; }
+
+            for (int i = pts.Length - 1; i > 0 && remaining > 0; i--)
+            {
+                double sx = pts[i].X - pts[i - 1].X;
+                double sy = pts[i].Y - pts[i - 1].Y;
+                double segLen = Math.Sqrt(sx * sx + sy * sy);
+                if (segLen < 1e-9) continue;
+
+                if (segLen >= remaining)
+                {
+                    // 尖端落在这一段内部
+                    double t = remaining / segLen;
+                    tipX = pts[i].X - sx * t;
+                    tipY = pts[i].Y - sy * t;
+                    dx = sx / segLen;
+                    dy = sy / segLen;
+                    remaining = 0;
+                }
+                else
+                {
+                    remaining -= segLen;
+                    tipX = pts[i - 1].X;
+                    tipY = pts[i - 1].Y;
+                }
+            }
+
+            if (Math.Abs(dx) < 1e-9 && Math.Abs(dy) < 1e-9) return;
+
+            // 箭头底边中点（沿反方向退一段）
+            double bx = tipX - dx * size;
+            double by = tipY - dy * size;
+            // 垂直于方向的单位向量
+            double px = -dy;
+            double py = dx;
+
+            PointF[] tri = new PointF[]
+            {
+                new PointF((float)tipX, (float)tipY),
+                new PointF((float)(bx + px * half), (float)(by + py * half)),
+                new PointF((float)(bx - px * half), (float)(by - py * half))
+            };
+
+            using (SolidBrush brush = new SolidBrush(pen.Color))
+            {
+                g.FillPolygon(brush, tri);
+            }
         }
 
         private void DrawVertexGeometry(Graphics g, Vertex v, double radius, Brush brush, Pen pen)

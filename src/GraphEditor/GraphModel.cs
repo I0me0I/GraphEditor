@@ -164,6 +164,18 @@ namespace GraphEditor
         public VertexLabelPlacement VertexLabelPlacement = VertexLabelPlacement.Inside;
         public EdgeLabelPlacement EdgeLabelPlacement = EdgeLabelPlacement.Above;
 
+        /// <summary>
+        /// 是否允许多重图：同一对顶点之间可以有多条边、也允许自环。
+        /// 关闭时（简单图）同一对顶点之间最多一条边，且不允许自环。
+        /// </summary>
+        public bool MultiGraph = true;
+
+        /// <summary>
+        /// 是否为有向图。为 true 时边在终点（V2）画箭头；
+        /// 关闭时只是隐藏箭头，边本身保留（图从此按无向解释）。
+        /// </summary>
+        public bool Directed = true;
+
         private readonly List<Vertex> _vertices = new List<Vertex>();
         private readonly List<Edge> _edges = new List<Edge>();
         private readonly Dictionary<int, Vertex> _vertexById = new Dictionary<int, Vertex>();
@@ -240,10 +252,66 @@ namespace GraphEditor
             Vertex a = FindVertex(v1);
             Vertex b = FindVertex(v2);
             if (a == null || b == null) return null;
+
+            // 简单图（非多重图）下，同一对顶点之间最多一条边，且不允许自环
+            if (!MultiGraph && (v1 == v2 || HasEdgeBetween(v1, v2))) return null;
+
             Edge e = new Edge(_nextEdgeId++, v1, v2,
                 string.IsNullOrEmpty(name) ? NextEdgeName(a, b) : name);
             _edges.Add(e);
             return e;
+        }
+
+        /// <summary>
+        /// 这两个顶点之间是否已经有一条边。无向时 A-B 与 B-A 算同一条；
+        /// 有向时按方向区分（A→B 与 B→A 是两条）。
+        /// </summary>
+        public bool HasEdgeBetween(int v1, int v2)
+        {
+            for (int i = 0; i < _edges.Count; i++)
+            {
+                Edge e = _edges[i];
+                if (e.V1 == v1 && e.V2 == v2) return true;
+                if (!Directed && e.V1 == v2 && e.V2 == v1) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 把图化简为简单图：去掉自环与「同一对顶点之间的重复边」（每组保留最早的一条），
+        /// 返回被删除的边数。用于关闭「多重图」时清理。
+        /// </summary>
+        public int RemoveExtraEdges()
+        {
+            List<Edge> keep = new List<Edge>();
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            int removed = 0;
+            for (int i = 0; i < _edges.Count; i++)
+            {
+                Edge e = _edges[i];
+                if (e.V1 == e.V2) { removed++; continue; }
+                string key;
+                if (Directed)
+                {
+                    key = e.V1.ToString(CultureInfo.InvariantCulture) + ">"
+                        + e.V2.ToString(CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    int lo = Math.Min(e.V1, e.V2);
+                    int hi = Math.Max(e.V1, e.V2);
+                    key = lo.ToString(CultureInfo.InvariantCulture) + "-"
+                        + hi.ToString(CultureInfo.InvariantCulture);
+                }
+                if (!seen.Add(key)) { removed++; continue; }
+                keep.Add(e);
+            }
+            if (removed > 0)
+            {
+                _edges.Clear();
+                _edges.AddRange(keep);
+            }
+            return removed;
         }
 
         /// <summary>删除顶点时同时删除与其关联的边。</summary>

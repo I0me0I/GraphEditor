@@ -7,12 +7,11 @@ using System.Windows.Forms;
 namespace GraphEditor
 {
     /// <summary>
-    /// 主窗口：菜单栏 + 工作区（+ 状态栏）。
-    /// 画布尺寸由内容自动决定，因此没有工具栏与图像大小输入。
+    /// MDI 父窗口：菜单栏 + 状态栏，操作总是作用于「当前活动文档」。
+    /// 每个文档是一个 <see cref="DocumentForm"/> 子窗口，各自持有工作区与文件状态。
     /// </summary>
     public sealed class MainForm : Form
     {
-        private readonly CanvasControl _canvas = new CanvasControl();
         private readonly MenuStrip _menu = new MenuStrip();
         private readonly StatusStrip _status = new StatusStrip();
         private readonly ToolStripStatusLabel _statusLeft = new ToolStripStatusLabel();
@@ -26,9 +25,34 @@ namespace GraphEditor
         private readonly ToolStripMenuItem _menuPaste = new ToolStripMenuItem("粘贴(&P)");
         private readonly ToolStripMenuItem _menuRotate = new ToolStripMenuItem("旋转(&R)");
 
-        private string _currentPath;
-        private bool _dirty;
         private bool _diagnosticMode;
+
+        /// <summary>当前活动的文档窗口；没有文档时为 null。</summary>
+        private DocumentForm ActiveDocument
+        {
+            get
+            {
+                DocumentForm doc = ActiveMdiChild as DocumentForm;
+                if (doc != null) return doc;
+                // 活动窗口不是文档（例如焦点在别处）时退回第一个文档
+                foreach (Form child in MdiChildren)
+                {
+                    DocumentForm candidate = child as DocumentForm;
+                    if (candidate != null) return candidate;
+                }
+                return null;
+            }
+        }
+
+        /// <summary>当前活动文档的工作区；没有文档时为 null。</summary>
+        private CanvasControl _canvas
+        {
+            get
+            {
+                DocumentForm doc = ActiveDocument;
+                return doc == null ? null : doc.CanvasArea;
+            }
+        }
 
         public MainForm()
             : this(null)
@@ -53,12 +77,11 @@ namespace GraphEditor
         {
             try
             {
-                GraphCanvas c = GraphIo.Load(path);
-                AttachCanvas(c);
-                _currentPath = path;
-                SetDirty(false);
+                DocumentForm doc = ActiveDocument;
+                if (doc == null) { doc = CreateDocument(); }
+                doc.LoadFile(path);
                 SetHint("已打开 " + Path.GetFileName(path)
-                    + "（顶点 " + c.Vertices.Count + "，边 " + c.Edges.Count + "）。");
+                    + "（顶点 " + doc.Canvas.Vertices.Count + "，边 " + doc.Canvas.Edges.Count + "）。");
             }
             catch (Exception ex)
             {
@@ -76,53 +99,28 @@ namespace GraphEditor
             Font = new Font("Microsoft YaHei UI", 9F);
             ClientSize = new Size(1180, 760);
             StartPosition = FormStartPosition.CenterScreen;
-            // 画布最小 400×400，这里保证客户区足够放下它再加上菜单/状态栏
-            MinimumSize = new Size(500, 520);
+            // 子窗口最小 420×340，这里保证父窗口放得下它再加上菜单/状态栏
+            MinimumSize = new Size(560, 560);
             KeyPreview = true;
+            IsMdiContainer = true;
 
             BuildMenu();
             BuildStatusBar();
             ApplyApplicationIcon();
 
-            Panel host = new Panel();
-            host.Dock = DockStyle.Fill;
-            host.Padding = new Padding(6);
-            host.BackColor = Color.FromArgb(0x9E, 0xA3, 0xAA);
-            _canvas.Dock = DockStyle.Fill;
-            host.Controls.Add(_canvas);
-
-            Controls.Add(host);
             Controls.Add(_menu);
             Controls.Add(_status);
             MainMenuStrip = _menu;
-
-            _canvas.SelectionChanged += delegate { UpdateSelectionUi(); };
-            _canvas.CanvasChanged += delegate { MarkDirty(); };
-            // 缩放可能是滚轮触发的，不一定经过菜单，所以状态栏必须订阅这个事件
-            _canvas.ZoomChanged += delegate { UpdateStatusRight(); };
-            _canvas.HintTextChanged += delegate(object sender, HintTextEventArgs e)
-            {
-                SetHint(e.Text);
-            };
-
-            _canvas.KeyDown += delegate(object sender, KeyEventArgs e)
-            {
-                if (e.Control && e.KeyCode == Keys.S) { SaveDocument(false); e.Handled = true; }
-                else if (e.Control && e.KeyCode == Keys.O) { OpenDocument(); e.Handled = true; }
-                else if (e.Control && e.KeyCode == Keys.N) { NewDocument(true); e.Handled = true; }
-                else if (e.KeyCode == Keys.F12 && _diagnosticMode) { DumpStateSnapshot(); e.Handled = true; }
-            };
-
-            // 窗口真正布局完成后（客户区尺寸已确定）再按工作区大小定一次画布，
-            // 否则初始画布会按布局前的临时尺寸计算。
-            Shown += delegate { _canvas.RefreshScrollRange(); UpdateStatusRight(); };
         }
 
         /// <summary>供自检使用：菜单栏。</summary>
         public MenuStrip MainMenuBar { get { return _menu; } }
 
-        /// <summary>供自检使用：工作区。</summary>
+        /// <summary>供自检使用：当前活动文档的工作区。</summary>
         public CanvasControl CanvasArea { get { return _canvas; } }
+
+        /// <summary>供自检使用：当前活动的文档窗口。</summary>
+        public Form ActiveDocumentWindow { get { return ActiveDocument; } }
 
         private void BuildMenu()
         {
@@ -132,6 +130,7 @@ namespace GraphEditor
             ToolStripMenuItem file = new ToolStripMenuItem("文件(&F)");
             file.DropDownItems.Add(MenuItem("新建(&N)", Keys.Control | Keys.N, delegate { NewDocument(true); }));
             file.DropDownItems.Add(MenuItem("打开(&O)…", Keys.Control | Keys.O, delegate { OpenDocument(); }));
+            file.DropDownItems.Add(MenuItem("关闭(&C)", Keys.Control | Keys.W, delegate { CloseDocument(); }));
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add(MenuItem("保存(&S)", Keys.Control | Keys.S, delegate { SaveDocument(false); }));
             file.DropDownItems.Add(MenuItem("另存为(&A)…", Keys.Control | Keys.Shift | Keys.S, delegate { SaveDocument(true); }));
@@ -191,6 +190,18 @@ namespace GraphEditor
             _menu.Items.Add(edit);
             _menu.Items.Add(view);
             _menu.Items.Add(properties);
+
+            // ---- 窗口（MDI 子窗口列表由 MdiWindowListItem 自动维护）----
+            ToolStripMenuItem window = new ToolStripMenuItem("窗口(&W)");
+            window.DropDownItems.Add(MenuItem("层叠(&C)", Keys.None, delegate { LayoutMdi(MdiLayout.Cascade); }));
+            window.DropDownItems.Add(MenuItem("平铺(&T)", Keys.None, delegate { LayoutMdi(MdiLayout.TileHorizontal); }));
+            window.DropDownItems.Add(new ToolStripSeparator());
+            window.DropDownItems.Add(MenuItem("关闭当前文档(&W)", Keys.None, delegate { CloseDocument(); }));
+            window.DropDownItems.Add(new ToolStripSeparator());
+            // 打开文档的列表会由 WinForms 自动追加到这个菜单末尾
+            _menu.MdiWindowListItem = window;
+
+            _menu.Items.Add(window);
             _menu.Items.Add(help);
         }
 
@@ -277,7 +288,7 @@ namespace GraphEditor
             if (c == null) return;
 
             // ---- 顶点属性（一组全局样式，作用于所有顶点）----
-            ToolStripMenuItem vertex = new ToolStripMenuItem("顶点属性");
+            ToolStripMenuItem vertex = new ToolStripMenuItem("顶点");
             vertex.DropDownItems.Add(GroupLabel("作用范围：所有顶点"));
             vertex.DropDownItems.Add(new ToolStripSeparator());
             vertex.DropDownItems.Add(BuildColorMenu("颜色(&C)", c.DefaultVertexColor, OnDefaultVertexColor));
@@ -320,7 +331,7 @@ namespace GraphEditor
                 }));
 
             // ---- 边属性（另一组全局样式，作用于所有边）----
-            ToolStripMenuItem edge = new ToolStripMenuItem("边属性");
+            ToolStripMenuItem edge = new ToolStripMenuItem("边");
             edge.DropDownItems.Add(GroupLabel("作用范围：所有边"));
             edge.DropDownItems.Add(new ToolStripSeparator());
             edge.DropDownItems.Add(BuildColorMenu("颜色(&C)", c.DefaultEdgeColor, OnDefaultEdgeColor));
@@ -364,8 +375,48 @@ namespace GraphEditor
                     SetHint("边名字显示位置已设为「" + text + "」");
                 }));
 
+            // ---- 图类型（多重图 / 有向图）----
+            ToolStripMenuItem graph = new ToolStripMenuItem("图");
+            graph.DropDownItems.Add(GroupLabel("作用范围：当前文档"));
+            graph.DropDownItems.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem multiGraph = new ToolStripMenuItem("多重图(&M)");
+            multiGraph.Checked = c.MultiGraph;
+            multiGraph.Click += delegate
+            {
+                c.MultiGraph = !c.MultiGraph;
+                if (!c.MultiGraph)
+                {
+                    int removed = c.RemoveExtraEdges();
+                    _canvas.RefreshScrollRange();
+                    SetHint(removed > 0
+                        ? "已关闭多重图：删除了 " + removed + " 条多余的边（重边与自环）"
+                        : "已关闭多重图：同一对顶点之间最多一条边，且不允许自环");
+                }
+                else
+                {
+                    SetHint("已开启多重图：允许重边与自环");
+                }
+                MarkDirty();
+                _canvas.Invalidate();
+            };
+            graph.DropDownItems.Add(multiGraph);
+
+            ToolStripMenuItem directed = new ToolStripMenuItem("有向图(&D)");
+            directed.Checked = c.Directed;
+            directed.Click += delegate
+            {
+                c.Directed = !c.Directed;
+                SetHint(c.Directed ? "已开启有向图：边在终点显示箭头" : "已关闭有向图：隐藏箭头（边保留）");
+                MarkDirty();
+                _canvas.Invalidate();
+                _canvas.RefreshScrollRange();
+            };
+            graph.DropDownItems.Add(directed);
+
             properties.DropDownItems.Add(vertex);
             properties.DropDownItems.Add(edge);
+            properties.DropDownItems.Add(graph);
         }
 
         private static ToolStripMenuItem GroupLabel(string text)
@@ -520,6 +571,7 @@ namespace GraphEditor
 
         private string DescribeSelection()
         {
+            if (_canvas == null) return "无文档";
             int v = _canvas.SelectedVertexCount;
             int e = _canvas.SelectedEdgeCount;
             if (v == 0 && e == 0) return "未选中";
@@ -530,60 +582,67 @@ namespace GraphEditor
 
         private void UpdateSelectionUi()
         {
-            bool has = _canvas.HasSelection;
-            bool hasVertices = _canvas.SelectedVertexCount > 0;
+            bool hasDoc = _canvas != null;
+            bool has = hasDoc && _canvas.HasSelection;
+            bool hasVertices = hasDoc && _canvas.SelectedVertexCount > 0;
             _menuDelete.Enabled = has;
             _menuRename.Enabled = has;
             _menuDeselect.Enabled = has;
             _menuCopy.Enabled = hasVertices;
             _menuCut.Enabled = hasVertices;
             _menuRotate.Enabled = hasVertices;
-            _menuPaste.Enabled = CanvasControl.HasClipboardContent;
+            _menuPaste.Enabled = CanvasControl.HasClipboardContent && hasDoc;
             UpdateStatusRight();
         }
 
         private void UpdateStatusRight()
         {
+            if (_canvas == null)
+            {
+                _statusRight.Text = "无文档";
+                return;
+            }
             _statusRight.Text = DescribeSelection() + "    缩放 "
-                + (_canvas.Zoom * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
+                + (_canvas.Zoom * 100).ToString("0", CultureInfo.InvariantCulture) + "%"
+                + "    文档 " + MdiChildren.Length;
         }
 
-        // ================= 文档 =================
+        // ================= 文档（MDI） =================
+
+        /// <summary>
+        /// 新建一个文档子窗口。打开文件也走这里 —— 每个文档一个窗口，
+        /// 互不影响（各自持有自己的工作区、路径与修改状态）。
+        /// </summary>
+        private DocumentForm CreateDocument()
+        {
+            DocumentForm doc = new DocumentForm(_diagnosticMode);
+            doc.MdiParent = this;
+            doc.StateChanged += delegate { OnDocumentStateChanged(doc); };
+            doc.FormClosed += delegate { OnDocumentClosed(doc); };
+            doc.CanvasArea.SelectionChanged += delegate { if (doc == ActiveDocument) UpdateSelectionUi(); };
+            doc.CanvasArea.ZoomChanged += delegate { if (doc == ActiveDocument) UpdateStatusRight(); };
+            doc.CanvasArea.HintTextChanged += delegate(object sender, HintTextEventArgs e)
+            {
+                if (doc == ActiveDocument) SetHint(e.Text);
+            };
+            doc.CanvasArea.KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                HandleDocumentKey(e);
+            };
+            doc.NewBlank();
+            doc.Show();
+            return doc;
+        }
 
         private void NewDocument(bool askSave)
         {
-            if (askSave && !ConfirmDiscardChanges()) return;
-
-            // 初始尺寸只是占位：AttachCanvas 之后会按工作区大小自动重算（400 的整数倍）
-            GraphCanvas c = new GraphCanvas(800, 600);
-            c.VertexRadius = 18;
-            c.VertexShape = VertexShape.Circle;
-            c.EdgeWidth = 2;
-            c.EdgeLineStyle = EdgeLineStyle.Solid;
-            c.DefaultVertexColor = Color.FromArgb(0x2D, 0x7D, 0xD2);
-            c.DefaultEdgeColor = Color.FromArgb(0x40, 0x40, 0x40);
-            c.VertexNaming = NamingRule.Alphabetic;
-            c.EdgeNaming = NamingRule.None;
-            c.VertexLabelPlacement = VertexLabelPlacement.Inside;
-            c.EdgeLabelPlacement = EdgeLabelPlacement.Above;
-
-            AttachCanvas(c);
-            _currentPath = null;
-            SetDirty(false);
-            SetHint("已新建空白图。画布是无限平面，滚动条随内容出现。");
-        }
-
-        private void AttachCanvas(GraphCanvas c)
-        {
-            _canvas.Canvas = c;
-            _canvas.RefreshScrollRange();
-            _canvas.CenterOnContent();
+            CreateDocument();
+            SetHint("已新建空白文档。画布是无限平面，滚动条随内容出现。");
             UpdateSelectionUi();
         }
 
         private void OpenDocument()
         {
-            if (!ConfirmDiscardChanges()) return;
             using (OpenFileDialog dialog = new OpenFileDialog())
             {
                 dialog.Title = "打开图文件";
@@ -592,12 +651,11 @@ namespace GraphEditor
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    GraphCanvas c = GraphIo.Load(dialog.FileName);
-                    AttachCanvas(c);
-                    _currentPath = dialog.FileName;
-                    SetDirty(false);
-                    SetHint("已打开 " + Path.GetFileName(_currentPath)
-                        + "（顶点 " + c.Vertices.Count + "，边 " + c.Edges.Count + "）。");
+                    DocumentForm doc = CreateDocument();
+                    doc.LoadFile(dialog.FileName);
+                    SetHint("已打开 " + Path.GetFileName(dialog.FileName)
+                        + "（顶点 " + doc.Canvas.Vertices.Count + "，边 " + doc.Canvas.Edges.Count + "）。");
+                    UpdateSelectionUi();
                 }
                 catch (Exception ex)
                 {
@@ -607,28 +665,21 @@ namespace GraphEditor
             }
         }
 
+        /// <summary>关闭当前文档（会先询问保存）。</summary>
+        private void CloseDocument()
+        {
+            DocumentForm doc = ActiveDocument;
+            if (doc != null) doc.Close();
+        }
+
         private bool SaveDocument(bool forceAskPath)
         {
-            string path = _currentPath;
-            if (forceAskPath || string.IsNullOrEmpty(path))
-            {
-                using (SaveFileDialog dialog = new SaveFileDialog())
-                {
-                    dialog.Title = "保存图文件";
-                    dialog.Filter = GraphIo.FileFilter;
-                    dialog.DefaultExt = "graph";
-                    dialog.FileName = string.IsNullOrEmpty(path) ? "graph1.graph" : Path.GetFileName(path);
-                    if (dialog.ShowDialog(this) != DialogResult.OK) return false;
-                    path = dialog.FileName;
-                }
-            }
-
+            DocumentForm doc = ActiveDocument;
+            if (doc == null) return false;
             try
             {
-                GraphIo.Save(_canvas.Canvas, path);
-                _currentPath = path;
-                SetDirty(false);
-                SetHint("已保存到 " + path);
+                if (!doc.Save(forceAskPath)) return false;
+                SetHint("已保存到 " + doc.FilePath);
                 return true;
             }
             catch (Exception ex)
@@ -641,64 +692,101 @@ namespace GraphEditor
 
         private void ExportSvg()
         {
-            string suggested = string.IsNullOrEmpty(_currentPath)
-                ? "graph1.svg"
-                : Path.GetFileNameWithoutExtension(_currentPath) + ".svg";
-            using (SaveFileDialog dialog = new SaveFileDialog())
+            DocumentForm doc = ActiveDocument;
+            if (doc == null) return;
+            try
             {
-                dialog.Title = "导出为 SVG";
-                dialog.Filter = "SVG 矢量图 (*.svg)|*.svg|所有文件 (*.*)|*.*";
-                dialog.DefaultExt = "svg";
-                dialog.FileName = suggested;
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    SvgExport.Export(_canvas.Canvas, dialog.FileName);
-                    RectD bounds = SvgExport.ExportBounds(_canvas.Canvas);
-                    SetHint("已导出 SVG：" + dialog.FileName + "（内容区域 "
-                        + ToText(bounds.Width) + " × " + ToText(bounds.Height) + "，含 "
-                        + ToText(SvgExport.Padding) + " 像素留白）");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, "导出失败：" + Environment.NewLine + ex.Message,
-                        "GraphEditor", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                string path = doc.ExportSvg();
+                if (string.IsNullOrEmpty(path)) return;
+                RectD bounds = SvgExport.ExportBounds(doc.Canvas);
+                SetHint("已导出 SVG：" + path + "（内容区域 "
+                    + ToText(bounds.Width) + " × " + ToText(bounds.Height) + "，含 "
+                    + ToText(SvgExport.Padding) + " 像素留白）");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "导出失败：" + Environment.NewLine + ex.Message,
+                    "GraphEditor", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private bool ConfirmDiscardChanges()
+        /// <summary>子窗口标题/修改状态变化时刷新父窗口标题与状态栏。</summary>
+        private void OnDocumentStateChanged(DocumentForm doc)
         {
-            if (_diagnosticMode) return true;
-            if (!_dirty) return true;
-            string name = string.IsNullOrEmpty(_currentPath) ? "未命名图" : Path.GetFileName(_currentPath);
-            DialogResult result = MessageBox.Show(this,
-                "“" + name + "”有未保存的修改，是否保存？",
-                "GraphEditor",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Question);
-            if (result == DialogResult.Cancel) return false;
-            if (result == DialogResult.Yes) return SaveDocument(false);
-            return true;
+            if (doc == ActiveDocument)
+            {
+                UpdateSelectionUi();
+                UpdateParentTitle();
+            }
+        }
+
+        private void OnDocumentClosed(DocumentForm doc)
+        {
+            if (MdiChildren.Length == 0)
+            {
+                UpdateParentTitle();
+                UpdateSelectionUi();
+            }
+        }
+
+        /// <summary>切换活动文档时刷新标题与菜单可用性。</summary>
+        protected override void OnMdiChildActivate(EventArgs e)
+        {
+            base.OnMdiChildActivate(e);
+            UpdateSelectionUi();
+            UpdateParentTitle();
+        }
+
+        private void UpdateParentTitle()
+        {
+            DocumentForm doc = ActiveDocument;
+            if (doc == null)
+            {
+                Text = "GraphEditor — 图论图编辑器";
+                return;
+            }
+            Text = "GraphEditor — " + doc.DocumentName + (doc.IsDirty ? " *" : "");
+        }
+
+        private void HandleDocumentKey(KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.S) { SaveDocument(false); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.O) { OpenDocument(); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.N) { NewDocument(true); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.W) { CloseDocument(); e.Handled = true; }
+            else if (e.KeyCode == Keys.F12 && _diagnosticMode) { DumpStateSnapshot(); e.Handled = true; }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
-            if (!ConfirmDiscardChanges()) e.Cancel = true;
+            if (e.Cancel) return;
+
+            // 关闭父窗口前先逐个询问未保存的文档
+            foreach (Form child in (Form[])MdiChildren.Clone())
+            {
+                DocumentForm doc = child as DocumentForm;
+                if (doc == null) continue;
+                if (!doc.ConfirmDiscardChanges())
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
         }
 
         private void MarkDirty()
         {
-            SetDirty(true);
+            DocumentForm doc = ActiveDocument;
+            if (doc != null) doc.MarkDirty();
             UpdateStatusRight();
         }
 
         private void SetDirty(bool dirty)
         {
-            _dirty = dirty;
-            string name = string.IsNullOrEmpty(_currentPath) ? "未命名" : Path.GetFileName(_currentPath);
-            Text = "GraphEditor — " + name + (dirty ? " *" : "");
+            DocumentForm doc = ActiveDocument;
+            if (doc != null) doc.SetDirty(dirty);
+            UpdateParentTitle();
         }
 
         // ================= 诊断支持（开发期使用） =================
@@ -811,12 +899,11 @@ namespace GraphEditor
         {
             try
             {
-                GraphCanvas c = GraphIo.Load(path);
-                AttachCanvas(c);
-                _currentPath = path;
-                SetDirty(false);
+                DocumentForm doc = ActiveDocument;
+                if (doc == null) doc = CreateDocument();
+                doc.LoadFile(path);
                 SetHint("已打开 " + Path.GetFileName(path)
-                    + "（顶点 " + c.Vertices.Count + "，边 " + c.Edges.Count + "）。");
+                    + "（顶点 " + doc.Canvas.Vertices.Count + "，边 " + doc.Canvas.Edges.Count + "）。");
             }
             catch (Exception ex)
             {

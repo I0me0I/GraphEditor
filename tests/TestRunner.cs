@@ -92,6 +92,9 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandSelection", TestRubberBandSelection);
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
+                RunSelected(only, "TestMdiDocuments", TestMdiDocuments);
+                RunSelected(only, "TestGraphTypeOptions", TestGraphTypeOptions);
+                RunSelected(only, "TestGraphTypeMenu", TestGraphTypeMenu);
                 RunSelected(only, "TestMenusAndDefaultColor", TestMenusAndDefaultColor);
                 RunSelected(only, "TestReportedRegressions", TestReportedRegressions);
                 RunSelected(only, "TestClipboard", TestClipboard);
@@ -1016,13 +1019,13 @@ namespace GraphEditor.Tests
                 if (properties == null) return;
 
                 form.RefreshPropertyMenu();
-                CheckEqual(2, properties.DropDownItems.Count,
-                    "属性菜单只有 顶点属性 / 边属性（画布已移除）");
+                CheckEqual(3, properties.DropDownItems.Count,
+                    "属性菜单为 顶点 / 边 / 图");
 
-                ToolStripMenuItem vertex = FindSubMenu(properties, "顶点属性");
-                ToolStripMenuItem edge = FindSubMenu(properties, "边属性");
-                Check(vertex != null, "属性菜单包含「顶点属性」");
-                Check(edge != null, "属性菜单包含「边属性」");
+                ToolStripMenuItem vertex = FindSubMenu(properties, "顶点");
+                ToolStripMenuItem edge = FindSubMenu(properties, "边");
+                Check(vertex != null, "属性菜单包含「顶点」");
+                Check(edge != null, "属性菜单包含「边」");
                 if (vertex == null || edge == null) return;
 
                 Check(FindSubMenu(vertex, "颜色") != null, "顶点属性含颜色");
@@ -1119,7 +1122,7 @@ namespace GraphEditor.Tests
 
                 // ---- 重新展开后勾选状态跟随当前值 ----
                 form.RefreshPropertyMenu();
-                ToolStripMenuItem vertex2 = FindSubMenu(form.PropertyMenuItem, "顶点属性");
+                ToolStripMenuItem vertex2 = FindSubMenu(form.PropertyMenuItem, "顶点");
                 ToolStripMenuItem shapeMenu2 = FindSubMenu(vertex2, "形状");
                 foreach (ToolStripItem item in shapeMenu2.DropDownItems)
                 {
@@ -1479,8 +1482,8 @@ namespace GraphEditor.Tests
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                     .Invoke(form, new object[] { properties });
 
-                ToolStripMenuItem edge = FindSubMenu(properties, "边属性");
-                Check(edge != null, "找到边属性菜单");
+                ToolStripMenuItem edge = FindSubMenu(properties, "边");
+                Check(edge != null, "找到「边」子菜单");
                 ToolStripMenuItem naming = FindSubMenu(edge, "默认命名");
                 Check(naming != null, "找到边的默认命名菜单");
 
@@ -1505,7 +1508,7 @@ namespace GraphEditor.Tests
                     form.GetType().GetMethod("RebuildPropertyMenu",
                         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                         .Invoke(form, new object[] { properties });
-                    ToolStripMenuItem edgeMenu = FindSubMenu(properties, "边属性");
+                    ToolStripMenuItem edgeMenu = FindSubMenu(properties, "边");
                     ToolStripMenuItem namingMenu = FindSubMenu(edgeMenu, "默认命名");
 
                     ClickOption(namingMenu, cases[i][0]);
@@ -1525,7 +1528,7 @@ namespace GraphEditor.Tests
                 form.GetType().GetMethod("RebuildPropertyMenu",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                     .Invoke(form, new object[] { properties });
-                ToolStripMenuItem finalNaming = FindSubMenu(FindSubMenu(properties, "边属性"), "默认命名");
+                ToolStripMenuItem finalNaming = FindSubMenu(FindSubMenu(properties, "边"), "默认命名");
                 Check(finalNaming.Text.IndexOf("不命名", StringComparison.Ordinal) >= 0,
                     "菜单标题反映当前规则（实际「" + finalNaming.Text + "」）");
             }
@@ -1707,6 +1710,189 @@ namespace GraphEditor.Tests
 
 
         /// <summary>
+        /// 多文档界面：打开多个文档时各自独立（工作区、图模型、修改状态互不影响），
+        /// 菜单作用于当前活动文档。
+        /// </summary>
+        private static void TestMdiDocuments()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                System.Reflection.MethodInfo create = typeof(MainForm).GetMethod("CreateDocument",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+                Check(form.IsMdiContainer, "主窗口是 MDI 容器");
+                CheckEqual(1, form.MdiChildren.Length, "启动时有一个文档窗口");
+
+                create.Invoke(form, null);
+                create.Invoke(form, null);
+                CheckEqual(3, form.MdiChildren.Length, "再新建两个后共有三个文档窗口");
+                Check(form.ActiveDocumentWindow != null, "存在活动文档窗口");
+
+                CanvasControl first = null;
+                System.Collections.Generic.HashSet<int> seen = new System.Collections.Generic.HashSet<int>();
+                foreach (Form child in form.MdiChildren)
+                {
+                    CanvasControl canvas = (CanvasControl)child.GetType()
+                        .GetProperty("CanvasArea").GetValue(child, null);
+                    Check(canvas != null, "子窗口都有工作区");
+                    Check(seen.Add(canvas.GetHashCode()), "各文档的工作区是不同实例");
+                    Check(canvas.Canvas != null, "子窗口都挂着图模型");
+                    if (first == null) first = canvas;
+                }
+
+                // 在一个文档里加顶点，不影响另一个
+                first.Canvas.AddVertex(0, 0, "X");
+                int others = 0;
+                foreach (Form child in form.MdiChildren)
+                {
+                    CanvasControl canvas = (CanvasControl)child.GetType()
+                        .GetProperty("CanvasArea").GetValue(child, null);
+                    if (canvas != first) others += canvas.Canvas.Vertices.Count;
+                }
+                CheckEqual(0, others, "一个文档里加顶点不影响其它文档");
+
+                // 菜单作用于活动文档：切换「有向图」只改当前文档
+                CanvasControl active = form.CanvasArea;
+                GraphCanvas activeGraph = active.Canvas;
+                bool before = activeGraph.Directed;
+                ToolStripMenuItem properties = new ToolStripMenuItem("属性");
+                typeof(MainForm).GetMethod("RebuildPropertyMenu",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .Invoke(form, new object[] { properties });
+                ToolStripMenuItem graph = FindMenuItem(properties, "图");
+                FindMenuItem(graph, "有向图").PerformClick();
+                Check(before != activeGraph.Directed, "菜单切换作用于活动文档");
+
+                int stillDefault = 0;
+                foreach (Form child in form.MdiChildren)
+                {
+                    CanvasControl canvas = (CanvasControl)child.GetType()
+                        .GetProperty("CanvasArea").GetValue(child, null);
+                    if (canvas != active && canvas.Canvas.Directed) stillDefault++;
+                }
+                CheckEqual(2, stillDefault, "其它文档的有向图设置不受影响");
+            }
+        }
+
+        /// <summary>
+        /// 图类型：多重图 / 有向图。
+        ///   - 默认两者开启
+        ///   - 关闭多重图时清理重边与自环，之后也不允许再建
+        ///   - 关闭有向图只是隐藏箭头，边保留
+        ///   - 两者随 .graph 往返
+        /// </summary>
+        private static void TestGraphTypeOptions()
+        {
+            GraphCanvas c = new GraphCanvas(800, 600);
+            Check(c.MultiGraph, "默认开启多重图");
+            Check(c.Directed, "默认开启有向图");
+
+            Vertex a = c.AddVertex(100, 100, "A");
+            Vertex b = c.AddVertex(300, 100, "B");
+            Edge e1 = c.AddEdge(a.Id, b.Id);
+            Edge e2 = c.AddEdge(a.Id, b.Id);
+            Edge loop = c.AddEdge(a.Id, a.Id);
+            Check(e1 != null && e2 != null, "多重图下允许重边");
+            Check(loop != null, "多重图下允许自环");
+            CheckEqual(3, c.Edges.Count, "此时共 3 条边");
+
+            // 关闭多重图：清理多余的边与自环
+            c.MultiGraph = false;
+            int removed = c.RemoveExtraEdges();
+            CheckEqual(2, removed, "关闭多重图后删除 2 条（1 条重边 + 1 个自环）");
+            CheckEqual(1, c.Edges.Count, "只剩 1 条边");
+            Check(c.Edges[0].V1 != c.Edges[0].V2, "剩下的不是自环");
+
+            // 关闭后不允许再加重边或自环
+            Check(c.AddEdge(a.Id, b.Id) == null, "简单图下不允许再加重边");
+            Check(c.AddEdge(a.Id, a.Id) == null, "简单图下不允许再加自环");
+            CheckEqual(1, c.Edges.Count, "被拒绝的边没有加进去");
+
+            // 无向时 A→B 与 B→A 视为同一对
+            c.Directed = false;
+            Check(c.HasEdgeBetween(b.Id, a.Id), "无向图下 B-A 与 A-B 算同一条边");
+            Check(c.AddEdge(b.Id, a.Id) == null, "无向简单图下不允许反向再加一条");
+
+            // 有向时可以两个方向各一条
+            GraphCanvas d = new GraphCanvas(800, 600);
+            d.MultiGraph = false;
+            d.Directed = true;
+            Vertex p = d.AddVertex(0, 0, "P");
+            Vertex q = d.AddVertex(100, 0, "Q");
+            Check(d.AddEdge(p.Id, q.Id) != null, "有向图允许 P→Q");
+            Check(d.AddEdge(p.Id, q.Id) == null, "有向图不允许重复的 P→Q");
+            Check(d.AddEdge(q.Id, p.Id) != null, "有向图允许反向的 Q→P");
+
+            Edge pq = d.Edges[0];
+            CheckEqual(p.Id, pq.V1, "边起点是连接的起点 P");
+            CheckEqual(q.Id, pq.V2, "边终点是连接的终点 Q");
+
+            // 有向开关随文件往返
+            GraphCanvas original = new GraphCanvas(800, 600);
+            original.MultiGraph = false;
+            original.Directed = false;
+            GraphCanvas loaded = GraphIo.Deserialize(GraphIo.Serialize(original));
+            Check(!loaded.MultiGraph, "往返：多重图标记保留（false）");
+            Check(!loaded.Directed, "往返：有向图标记保留（false）");
+
+            GraphCanvas loaded2 = GraphIo.Deserialize(GraphIo.Serialize(new GraphCanvas(800, 600)));
+            Check(loaded2.MultiGraph, "往返：多重图标记保留（默认 true）");
+            Check(loaded2.Directed, "往返：有向图标记保留（默认 true）");
+        }
+
+        /// <summary>菜单里「属性 → 图」的两个勾选项能切换并生效。</summary>
+        private static void TestGraphTypeMenu()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                CanvasControl canvas = form.CanvasArea;
+                GraphCanvas c = canvas.Canvas;
+
+                Vertex a = c.AddVertex(canvas.WorldToImage(-100, 0).X, canvas.WorldToImage(-100, 0).Y, "A");
+                Vertex b = c.AddVertex(canvas.WorldToImage(100, 0).X, canvas.WorldToImage(100, 0).Y, "B");
+                c.AddEdge(a.Id, b.Id);
+                c.AddEdge(a.Id, b.Id);
+                c.AddEdge(a.Id, a.Id);
+
+                ToolStripMenuItem properties = new ToolStripMenuItem("属性");
+                typeof(MainForm).GetMethod("RebuildPropertyMenu",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .Invoke(form, new object[] { properties });
+
+                Check(FindMenuItem(properties, "顶点") != null, "属性菜单含「顶点」");
+                Check(FindMenuItem(properties, "边") != null, "属性菜单含「边」");
+                ToolStripMenuItem graph = FindMenuItem(properties, "图");
+                Check(graph != null, "属性菜单含「图」");
+
+                ToolStripMenuItem multi = FindMenuItem(graph, "多重图");
+                ToolStripMenuItem directed = FindMenuItem(graph, "有向图");
+                Check(multi != null, "「图」含「多重图」");
+                Check(directed != null, "「图」含「有向图」");
+                Check(multi.Checked, "多重图默认勾选");
+                Check(directed.Checked, "有向图默认勾选");
+
+                // 取消多重图：清理多余的边与自环
+                multi.PerformClick();
+                Check(!c.MultiGraph, "点「多重图」后关闭");
+                CheckEqual(1, c.Edges.Count, "关闭多重图时清理掉重边与自环（剩 1 条）");
+
+                // 取消有向图：只隐藏箭头，边保留
+                int before = c.Edges.Count;
+                directed.PerformClick();
+                Check(!c.Directed, "点「有向图」后关闭");
+                CheckEqual(before, c.Edges.Count, "关闭有向图不影响边的数量");
+
+                // 再点回来
+                multi.PerformClick();
+                Check(c.MultiGraph, "再点「多重图」恢复为 true");
+                directed.PerformClick();
+                Check(c.Directed, "再点「有向图」恢复为 true");
+            }
+        }
+
+        /// <summary>
         /// 右键菜单与属性菜单的结构：
         ///  1) 有选中元素时右击空白处，「粘贴」只出现一次
         ///  2) 属性菜单不再有「画布」
@@ -1752,8 +1938,8 @@ namespace GraphEditor.Tests
                 typeof(MainForm).GetMethod("RebuildPropertyMenu",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                     .Invoke(form, new object[] { properties });
-                Check(FindMenuItem(properties, "顶点属性") != null, "② 属性菜单含「顶点属性」");
-                Check(FindMenuItem(properties, "边属性") != null, "② 属性菜单含「边属性」");
+                Check(FindMenuItem(properties, "顶点") != null, "② 属性菜单含「顶点」");
+                Check(FindMenuItem(properties, "边") != null, "② 属性菜单含「边」");
                 Check(FindMenuItem(properties, "画布") == null, "② 属性菜单已移除「画布」");
 
                 // ---- 3) 颜色子菜单里的「默认颜色」 ----
