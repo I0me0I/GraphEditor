@@ -101,6 +101,17 @@ namespace GraphEditor
             // 文档区域铺满菜单与状态栏之间的空间
             _area.Dock = DockStyle.Fill;
             Controls.Add(_area);
+
+            // 菜单栏与文档区之间加一条 1px 分隔线：
+            // 菜单栏（#F4F4F4）与标签条（#F0F0F0）只差 1.6%，靠系统色区分不出来，
+            // 经典 Windows 程序的做法是用一条 ControlDark 的线划开边界。
+            Panel menuSeparator = new Panel();
+            menuSeparator.Dock = DockStyle.Top;
+            menuSeparator.Height = 1;
+            menuSeparator.BackColor = SystemColors.ControlDark;
+            menuSeparator.TabStop = false;
+            Controls.Add(menuSeparator);
+
             Controls.Add(_menu);
             Controls.Add(_status);
             MainMenuStrip = _menu;
