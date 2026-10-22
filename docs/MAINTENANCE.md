@@ -137,7 +137,54 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1
 
 ---
 
-## 4. 构建产物
+## 4. 发布版本
+
+前提：版本号已升好（第 2 节）、`build.ps1` 已重新构建、发布说明已写好。
+
+### 步骤
+
+```powershell
+# 1) 代码先推上去（第 1 节）
+
+# 2) 打 tag 并推送（tag 名固定为 v + 版本号）
+git tag -a v1.3.9 -m "GraphEditor 1.3.9"
+git -c http.sslBackend=openssl -c http.proxy=http://127.0.0.1:7890 -c credential.helper= `
+    push "https://x-access-token:<token>@github.com/I0me0I/GraphEditor.git" `
+    refs/tags/v1.3.9:refs/tags/v1.3.9
+
+# 3) 写发布说明（含下载表和 SHA-256）
+#    存为 build\release-body.md
+
+# 4) 发布：创建 release 并上传 build\GraphEditor.exe
+node tools\release.js              # 直接发布
+node tools\release.js --draft      # 先存草稿
+node tools\release.js --body 其他说明.md
+```
+
+`tools\release.js` 会：
+
+- 从 `src/GraphEditor/AssemblyInfo.cs` 读版本号，自动拼出 `v<版本>` 的 tag 名
+- 创建 release（已存在则更新）
+- 上传 `build\GraphEditor.exe`（同名附件会先删掉再传）
+- 打印发布页地址、附件大小和 GitHub 计算的 SHA-256
+
+发布后用本地哈希核对：
+
+```powershell
+Get-FileHash .\build\GraphEditor.exe -Algorithm SHA256
+```
+
+### 为什么发布脚本用 Node
+
+沙箱里 PowerShell / .NET 的 HTTPS 走 schannel，拿不到 Windows 凭据存储，
+请求直接失败（`SEC_E_NO_CREDENTIALS`）。Node 自带 OpenSSL，不经 schannel。
+
+在普通会话里也可以用官方 CLI：
+
+```powershell
+gh release create v1.3.9 build\GraphEditor.exe -F build\release-body.md -t "GraphEditor 1.3.9"
+```
+## 5. 构建产物
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
@@ -150,7 +197,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ---
 
-## 5. 文档分工
+## 6. 文档分工
 
 | 文件 | 放什么 |
 | --- | --- |
@@ -162,7 +209,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ---
 
-## 6. 提交信息
+## 7. 提交信息
 
 - 用中文写清楚「改了什么、为什么改」
 - 多行提交信息用文件传入，避免 PowerShell 把中文参数拆坏：
@@ -178,7 +225,7 @@ git -c i18n.commitEncoding=UTF-8 commit -F "$env:TEMP\msg.txt"
 
 ---
 
-## 7. PowerShell 脚本必须是纯 ASCII
+## 8. PowerShell 脚本必须是纯 ASCII
 
 `tests\run-tests.ps1`、`build.ps1`、`tools\*.ps1` 都会在 Windows PowerShell 5.1 下执行，
 而 5.1 读取**无 BOM** 的脚本时按 ANSI 解码 —— 中文会乱码甚至导致语法错误。

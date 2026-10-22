@@ -332,7 +332,8 @@ GraphEditor/
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）
 │  ├─ register-filetype.ps1    注册 / 取消 .graph 文件关联（HKCU）
-│  └─ push.ps1                 维护者脚本（见 docs/MAINTENANCE.md）
+│  ├─ push.ps1                 维护者脚本（见 docs/MAINTENANCE.md）
+│  └─ release.js              发布 release（Node，见 docs/MAINTENANCE.md）
 ├─ assets/GraphEditor.ico      应用图标
 ├─ docs/
 │  ├─ images/                  README 截图
