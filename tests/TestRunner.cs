@@ -93,6 +93,7 @@ namespace GraphEditor.Tests
                 RunSelected(only, "TestRubberBandEdgeRule", TestRubberBandEdgeRule);
                 RunSelected(only, "TestInfiniteCanvas", TestInfiniteCanvas);
                 RunSelected(only, "TestTabbedDocuments", TestTabbedDocuments);
+                RunSelected(only, "TestRubberBandEventThrottle", TestRubberBandEventThrottle);
                 RunSelected(only, "TestTabContextMenu", TestTabContextMenu);
                 RunSelected(only, "TestUntitledAndDropZones", TestUntitledAndDropZones);
                 RunSelected(only, "TestDropPreviewZones", TestDropPreviewZones);
@@ -1821,6 +1822,8 @@ namespace GraphEditor.Tests
                 form.DocumentArea.ApplyDrop(dragged, DropPlacement.Right);
                 Check(form.DocumentArea.IsSplit, "拖到右边缘 → 分成两个面板");
                 // 关掉面板里唯一的文档：空面板被收掉（其它面板还有文档，所以不补新文档）
+                // 关闭前先清掉未保存标记：否则会弹「是否保存」模态框，把测试进程挂死
+                foreach (DocumentView each in form.DocumentArea.AllDocuments) each.SetDirty(false);
                 int panesBeforeClose = form.DocumentArea.PaneCount;
                 int docsBeforeClose = form.DocumentArea.DocumentCount;
                 Check(form.DocumentArea.CloseDocument(dragged), "关闭新面板里的文档");
@@ -1876,6 +1879,41 @@ namespace GraphEditor.Tests
             }
         }
 
+        /// <summary>
+        /// 框选时鼠标每移动一格都会重算选择；选择结果没变就不该再发事件，
+        /// 否则每次移动都会连锁刷新标签文字、标题栏和状态栏（表现为标签疯狂闪烁 + 低配机器卡顿）。
+        /// </summary>
+        private static void TestRubberBandEventThrottle()
+        {
+            using (MainForm form = new MainForm())
+            {
+                form.CreateControl();
+                CanvasControl canvas = form.CanvasArea;
+                canvas.Canvas.AddVertex(60, 60, "A");
+
+                int events = 0;
+                canvas.SelectionChanged += delegate { events++; };
+
+                System.Reflection.MethodInfo down = typeof(CanvasControl).GetMethod("OnMouseDown",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.MethodInfo move = typeof(CanvasControl).GetMethod("OnMouseMove",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                System.Reflection.MethodInfo up = typeof(CanvasControl).GetMethod("OnMouseUp",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+                // 从空白处按下，扫过顶点后继续移动 9 次（这段完全不改变选择）
+                down.Invoke(canvas, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 10, 10, 0) });
+                for (int i = 1; i <= 10; i++)
+                {
+                    move.Invoke(canvas, new object[] { new MouseEventArgs(MouseButtons.Left, 0, 10 + i * 20, 10 + i * 20, 0) });
+                }
+                up.Invoke(canvas, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 220, 220, 0) });
+
+                CheckEqual(1, canvas.SelectedVertexCount, "框选选中了顶点 A");
+                Check(events <= 3, "选择没变时不重复发事件（10 次移动只发了 " + events + " 次）");
+            }
+        }
+
         /// <summary>右键标签弹出的菜单里应当有「关闭文档」，并且能真的关掉那个文档。</summary>
         private static void TestTabContextMenu()
         {
@@ -1896,6 +1934,8 @@ namespace GraphEditor.Tests
                 Check(CountItemsStartingWith(menu, "关闭") == 1, "标签菜单含「关闭」");
                 TabControl tabs = (TabControl)doc.Parent.Parent;
                 // 点「关闭」应当关掉该文档（关空后会自动补一个未命名，所以文档总数不变）
+                // 关闭前清脏标记，避免弹出保存确认框
+                foreach (DocumentView each in form.DocumentArea.AllDocuments) each.SetDirty(false);
                 int before = form.DocumentArea.DocumentCount;
                 ToolStripMenuItem closeItem = FindMenuItem(menu, "关闭");
                 Check(closeItem != null, "找到关闭菜单项");

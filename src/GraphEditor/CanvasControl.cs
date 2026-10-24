@@ -1322,24 +1322,41 @@ namespace GraphEditor
 
         private void ApplyRubberBandSelection()
         {
-            ClearSelectionInternal();
-
-            // 先选出与选框相交的顶点
+            // 先算出新的选择结果（不动现有集合），再和现有集合比对。
+            // 框选时鼠标每移动一格就会调用这里；如果选择没变就**不发事件** ——
+            // 否则每次移动都会连锁触发「改标签文字 → 重绘标签条 → 改标题栏 → 刷新状态栏」，
+            // 标签名字会不停闪，低性能机器上直接卡住。
+            HashSet<int> vertices = new HashSet<int>();
             foreach (Vertex v in _canvas.Vertices)
             {
-                if (_rubberBand.IntersectsWith(_canvas.VertexBounds(v))) _selectedVertices.Add(v.Id);
+                if (_rubberBand.IntersectsWith(_canvas.VertexBounds(v))) vertices.Add(v.Id);
             }
 
-            // 只有两个端点都被选中的边才算被选中（与复制/剪切的诱导子图语义一致）
+            HashSet<int> edges = new HashSet<int>();
             foreach (Edge e in _canvas.Edges)
             {
-                if (_selectedVertices.Contains(e.V1) && _selectedVertices.Contains(e.V2))
-                {
-                    _selectedEdges.Add(e.Id);
-                }
+                // 只有两个端点都被选中的边才算被选中（与复制/剪切的诱导子图语义一致）
+                if (vertices.Contains(e.V1) && vertices.Contains(e.V2)) edges.Add(e.Id);
             }
 
+            if (SameSet(vertices, _selectedVertices) && SameSet(edges, _selectedEdges)) return;
+
+            _selectedVertices.Clear();
+            foreach (int id in vertices) _selectedVertices.Add(id);
+            _selectedEdges.Clear();
+            foreach (int id in edges) _selectedEdges.Add(id);
+
             RaiseSelectionChanged();
+        }
+
+        private static bool SameSet(HashSet<int> a, HashSet<int> b)
+        {
+            if (a.Count != b.Count) return false;
+            foreach (int id in a)
+            {
+                if (!b.Contains(id)) return false;
+            }
+            return true;
         }
 
         protected override void OnMouseUp(MouseEventArgs e)

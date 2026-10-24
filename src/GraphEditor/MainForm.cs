@@ -27,6 +27,7 @@ namespace GraphEditor
         private readonly ToolStripMenuItem _menuPaste = new ToolStripMenuItem("粘贴(&P)");
         private readonly ToolStripMenuItem _menuRotate = new ToolStripMenuItem("旋转(&R)");
 
+        private bool _initialSizeApplied;
         private bool _diagnosticMode;
         private int _untitledCounter;
 
@@ -84,6 +85,32 @@ namespace GraphEditor
         }
 
         // ================= 窗口骨架 =================
+
+        /// <summary>
+        /// 高 DPI 下把初始窗口放大：1180×760 是 96 DPI 的设计尺寸，
+        /// 直接用在 150% 缩放的屏幕上会显得偏小。只在第一次显示时调整一次。
+        /// </summary>
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            if (_initialSizeApplied) return;
+            _initialSizeApplied = true;
+
+            float scale = DeviceDpi / 96F;
+            if (scale <= 1.01F) return;
+
+            Rectangle work = Screen.FromControl(this).WorkingArea;
+            int width = (int)Math.Round(1180 * scale);
+            int height = (int)Math.Round(760 * scale);
+            // 小屏幕 + 高缩放时别超出工作区
+            width = Math.Min(width, (int)(work.Width * 0.95));
+            height = Math.Min(height, (int)(work.Height * 0.95));
+
+            MinimumSize = new Size((int)Math.Round(560 * scale), (int)Math.Round(560 * scale));
+            ClientSize = new Size(width, height);
+            Location = new Point(work.Left + (work.Width - Width) / 2,
+                                 work.Top + (work.Height - Height) / 2);
+        }
 
         private void BuildWindow()
         {
@@ -672,15 +699,14 @@ namespace GraphEditor
         {
             if (_canvas == null)
             {
-                _statusRight.Text = "无文档";
+                if (_statusRight.Text != "无文档") _statusRight.Text = "无文档";
                 return;
             }
-            _statusRight.Text = DescribeSelection() + "    缩放 "
+            string right = DescribeSelection() + "    缩放 "
                 + (_canvas.Zoom * 100).ToString("0", CultureInfo.InvariantCulture) + "%"
                 + "    文档 " + _area.DocumentCount;
+            if (_statusRight.Text != right) _statusRight.Text = right;
         }
-
-        // ================= 文档（MDI） =================
 
         /// <summary>
         /// 新建一个文档子窗口。打开文件也走这里 —— 每个文档一个窗口，
@@ -801,12 +827,11 @@ namespace GraphEditor
         private void UpdateParentTitle()
         {
             DocumentView doc = ActiveDocument;
-            if (doc == null)
-            {
-                Text = "GraphEditor — 图论图编辑器";
-                return;
-            }
-            Text = "GraphEditor — " + doc.TabText;
+            string title = doc == null
+                ? "GraphEditor — 图论图编辑器"
+                : "GraphEditor — " + doc.TabText;
+            // 重复设置 Text 会让窗口标题栏不断重绘（框选时尤其明显）
+            if (Text != title) Text = title;
         }
 
         private void HandleDocumentKey(KeyEventArgs e)

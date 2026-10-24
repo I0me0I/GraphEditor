@@ -9,8 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#build)
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)](#build)
 [![Build](https://img.shields.io/badge/build-csc.exe%20%2F%20no%20SDK-success)](#build)
-[![Version](https://img.shields.io/badge/version-1.3.9-blueviolet)](#)
-[![Tests](https://img.shields.io/badge/tests-670%20checks-brightgreen)](#tests)
+[![Version](https://img.shields.io/badge/version-1.3.10-blueviolet)](#)
+[![Tests](https://img.shields.io/badge/tests-672%20checks-brightgreen)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/images/main.png" alt="GraphEditor 界面" width="820">
@@ -246,6 +246,7 @@ GraphEditor 是一个画**图（graph）**的 Windows 桌面工具：顶点、�
 | 运行时 | .NET Framework 4.8（Windows 10 1903+ / Windows 11 自带） |
 | 编译 | 系统自带的 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe` |
 | 开发环境 | **不需要** Visual Studio，也**不需要** .NET SDK |
+| 高 DPI | 支持 125% / 150% / 200% 缩放：窗口和对话框按 DPI 放大，不会裁字 |
 
 ### 构建
 
@@ -272,7 +273,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
 ## 测试
 
-项目自带一个**不依赖任何测试框架**的自检程序，共 **670 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
+项目自带一个**不依赖任何测试框架**的自检程序，共 **672 项断言**，覆盖模型、几何、序列化、SVG 导出、滚动与命中测试，以及真实的 UI 交互路径。
 
 ```powershell
 # 全部
@@ -286,10 +287,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-tests.ps1 -Only Te
 
 ```
 ================ 自检结果 ================
-通过: 670    失败: 0
+通过: 672    失败: 0
 产物目录: ...\artifacts
 ========================================
-RESULT passed=670 failed=0
+RESULT passed=672 failed=0
 ```
 
 ### 什么时候该跑测试
@@ -327,7 +328,7 @@ GraphEditor/
 │  ├─ Dialogs.cs               输入对话框、调色盘控件
 │  └─ AssemblyInfo.cs          版本信息
 ├─ tests/
-│  ├─ TestRunner.cs            670 项断言的自检程序
+│  ├─ TestRunner.cs            672 项断言的自检程序
 │  └─ run-tests.ps1            编译并运行自检
 ├─ tools/
 │  ├─ make-icon.ps1            从零生成应用图标（7 个尺寸的 DIB 帧）

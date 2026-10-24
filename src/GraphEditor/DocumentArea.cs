@@ -298,9 +298,10 @@ namespace GraphEditor
 
             doc.StateChanged += delegate
             {
-                page.Text = doc.TabText;
+                // 只在文字真的变了才写：每帧写一次会让标签条不停重绘（框选时表现为名字疯狂闪烁）
+                string tabText = doc.TabText;
+                if (page.Text != tabText) page.Text = tabText;
                 RaiseDocumentsChanged();
-                RaiseActiveChanged();
             };
 
             tabs.TabPages.Add(page);
